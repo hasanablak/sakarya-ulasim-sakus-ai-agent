@@ -35,6 +35,12 @@ type Geom = { type?: string; coordinates?: unknown };
 const DIR_COLORS = ["#1f4a3d", "#b85c38"];
 const SAKARYA: L.LatLngExpression = [40.767, 30.4033];
 
+function cartoVoyagerUrl(): string {
+  const key = (import.meta.env.VITE_CARTO_API_KEY ?? "").trim();
+  const base = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+  return key ? `${base}?key=${encodeURIComponent(key)}` : base;
+}
+
 function num(n: number | string): number {
   return typeof n === "number" ? n : Number(n);
 }
@@ -117,8 +123,8 @@ export function HatMap({
     if (!el || mapRef.current) return;
 
     const map = L.map(el, { scrollWheelZoom: true }).setView(SAKARYA, 12);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-      attribution: "&copy; OpenStreetMap &copy; CARTO",
+    L.tileLayer(cartoVoyagerUrl(), {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
       maxZoom: 19,
       subdomains: "abcd",
     }).addTo(map);

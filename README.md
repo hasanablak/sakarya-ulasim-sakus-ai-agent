@@ -97,6 +97,7 @@ Kök `.env` (commit etme). Şablon: `.env.example`.
 | `ADMIN_PASSWORD` | Yönetim girişi |
 | `INTERNAL_SECRET` | Scraper → API iç çağrı |
 | `SCRAPER_URL` | `http://127.0.0.1:3102` |
+| `VITE_CARTO_API_KEY` | Admin harita karoları (CARTO Voyager); filigranı kaldırır |
 
 ## Geliştirme
 

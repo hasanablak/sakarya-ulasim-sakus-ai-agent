@@ -4,7 +4,7 @@ services:
     image: mysql:8.4
     restart: unless-stopped
     ports:
-      - "3307:3306"
+      - "127.0.0.1:3307:3306"
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: sakus_ai
@@ -25,7 +25,7 @@ services:
       dockerfile: apps/scraper/Dockerfile
     restart: unless-stopped
     ports:
-      - "3102:3102"
+      - "127.0.0.1:3102:3102"
     environment:
       SCRAPER_PORT: "3102"
       API_PUBLIC_URL: http://host.docker.internal:3001

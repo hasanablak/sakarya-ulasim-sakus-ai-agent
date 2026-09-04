@@ -1,22 +1,8 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 import { api } from "../../api";
-import {
-  cx,
-  errText,
-  inputCls,
-  labelCls,
-  linkCls,
-  muted,
-  pageStack,
-  pageSub,
-  pageTitle,
-  tableCls,
-  tableWrap,
-  tdCls,
-  thCls,
-  trCls,
-} from "./ui";
+import { SohbetThread, avatarCls, initials, waListTime } from "./SohbetDetay";
+import { cx, errText, muted } from "./ui";
 
 type Row = {
   id: string;
@@ -35,16 +21,12 @@ type Row = {
 
 type WebchatOpt = { id: number; ad: string; slug: string };
 
-function fmt(s: string | null | undefined) {
-  if (!s) return "—";
-  const d = new Date(s);
-  return Number.isNaN(d.getTime()) ? String(s) : d.toLocaleString("tr-TR");
-}
-
 export function SohbetlerPage() {
+  const { id } = useParams();
   const [rows, setRows] = useState<Row[]>([]);
   const [webchats, setWebchats] = useState<WebchatOpt[]>([]);
   const [webchatId, setWebchatId] = useState<number | "">("");
+  const [q, setQ] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -58,86 +40,108 @@ export function SohbetlerPage() {
     api
       .sohbetler(webchatId === "" ? undefined : webchatId)
       .then((d) => setRows(d.oturumlar ?? []))
-      .catch((e) => setErr(String(e.message)));
-  }, [webchatId]);
+      .catch((e) => setErr(String((e as Error).message)));
+  }, [webchatId, id]);
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLocaleLowerCase("tr");
+    if (!needle) return rows;
+    return rows.filter((r) => {
+      const hay = [r.webchat_ad, r.agent_ad, r.last_user, r.last_assistant, r.host_origin, r.kaynak]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase("tr");
+      return hay.includes(needle);
+    });
+  }, [rows, q]);
 
   return (
-    <div className={pageStack}>
-      <div>
-        <h1 className={pageTitle}>Gelen kutusu</h1>
-        <p className={pageSub}>
-          Webchat üzerinden gelen sohbetler. Müşteri mesajı, asistan yanıtı, hangi pencere ve agent kullanıldığı burada.
-        </p>
-      </div>
-      {err && <p className={errText}>{err}</p>}
-      <div className="max-w-xs">
-        <label className={labelCls}>
-          Webchat
+    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-white dark:bg-[#111b21]">
+      <aside
+        className={cx(
+          "flex min-h-0 w-full shrink-0 flex-col border-r border-zinc-200 dark:border-[#222d34] md:w-[360px] lg:w-[400px]",
+          id && "hidden md:flex",
+        )}
+      >
+        <div className="shrink-0 space-y-2 border-b border-zinc-200 bg-[#f0f2f5] px-3 py-3 dark:border-[#222d34] dark:bg-[#202c33]">
+          <div className="flex items-center justify-between px-1">
+            <h1 className="text-lg font-semibold text-zinc-900 dark:text-[#e9edef]">Gelen kutusu</h1>
+            <span className="text-xs text-zinc-500">{filtered.length}</span>
+          </div>
+          <input
+            className="w-full rounded-lg border-0 bg-white px-3 py-2 text-sm text-zinc-900 outline-none ring-1 ring-zinc-200 placeholder:text-zinc-400 focus:ring-teal-600 dark:bg-[#111b21] dark:text-[#e9edef] dark:ring-[#222d34]"
+            placeholder="Sohbet ara"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
           <select
-            className={inputCls}
+            className="w-full rounded-lg border-0 bg-white px-3 py-2 text-sm text-zinc-900 outline-none ring-1 ring-zinc-200 focus:ring-teal-600 dark:bg-[#111b21] dark:text-[#e9edef] dark:ring-[#222d34]"
             value={webchatId === "" ? "" : String(webchatId)}
             onChange={(e) => setWebchatId(e.target.value ? Number(e.target.value) : "")}
           >
-            <option value="">Tümü</option>
+            <option value="">Tüm webchat’ler</option>
             {webchats.map((w) => (
               <option key={w.id} value={w.id}>
                 {w.ad} ({w.slug})
               </option>
             ))}
           </select>
-        </label>
-      </div>
-      {rows.length === 0 && !err && (
-        <p className={muted}>Henüz sohbet yok. Site veya embed üzerinden gelen mesajlar burada listelenir.</p>
-      )}
-      {rows.length > 0 && (
-        <div className={tableWrap}>
-          <table className={tableCls}>
-            <thead>
-              <tr>
-                <th className={thCls}>Zaman</th>
-                <th className={thCls}>Webchat</th>
-                <th className={thCls}>Müşteri</th>
-                <th className={thCls}>Asistan</th>
-                <th className={thCls}>Kaynak</th>
-                <th className={thCls}></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-              {rows.map((r) => (
-                <tr key={r.id} className={trCls}>
-                  <td className={cx(tdCls, "whitespace-nowrap")}>
-                    {fmt(r.updated_at)}
-                    <div className={cx(muted, "text-xs")}>
+        </div>
+        {err && <p className={cx(errText, "px-4 py-2 text-sm")}>{err}</p>}
+        <ul className="min-h-0 flex-1 overflow-y-auto">
+          {filtered.length === 0 && !err && (
+            <li className={cx(muted, "px-4 py-8 text-center text-sm")}>
+              Henüz sohbet yok. Site veya embed mesajları burada listelenir.
+            </li>
+          )}
+          {filtered.map((r) => {
+            const active = r.id === id;
+            const title = r.webchat_ad ?? "Sohbet";
+            const preview = r.last_user || r.last_assistant || "—";
+            return (
+              <li key={r.id}>
+                <Link
+                  to={`/admin/sohbetler/${r.id}`}
+                  className={cx(
+                    "flex gap-3 border-b border-zinc-100 px-3 py-3 hover:bg-zinc-50 dark:border-[#222d34] dark:hover:bg-[#202c33]",
+                    active && "bg-[#f0f2f5] dark:bg-[#2a3942]",
+                  )}
+                >
+                  <span className={cx("mt-0.5 grid h-12 w-12 shrink-0 place-items-center rounded-full text-sm font-semibold text-white", avatarCls(r.id))}>
+                    {initials(title)}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-baseline justify-between gap-2">
+                      <span className="truncate text-sm font-medium text-zinc-900 dark:text-[#e9edef]">{title}</span>
+                      <time className="shrink-0 text-[11px] text-zinc-400">{waListTime(r.updated_at)}</time>
+                    </span>
+                    <span className="mt-0.5 line-clamp-1 text-[13px] text-zinc-500 dark:text-[#8696a0]">{preview}</span>
+                    <span className="mt-0.5 block text-[11px] text-zinc-400">
                       {r.message_count} mesaj
                       {r.tool_count ? ` · ${r.tool_count} tool` : ""}
-                    </div>
-                  </td>
-                  <td className={tdCls}>
-                    {r.webchat_ad ?? "—"}
-                    <div className={cx(muted, "text-xs")}>{r.agent_ad ?? "agent yok"}</div>
-                  </td>
-                  <td className={cx(tdCls, "max-w-[260px]")}>
-                    <span className="line-clamp-2">{r.last_user ?? "—"}</span>
-                  </td>
-                  <td className={cx(tdCls, "max-w-[260px]")}>
-                    <span className="line-clamp-2">{r.last_assistant ?? "—"}</span>
-                  </td>
-                  <td className={cx(tdCls, muted, "text-xs")}>
-                    {r.kaynak === "embed" ? "Embed" : "Site"}
-                    {r.host_origin ? <div>{r.host_origin}</div> : null}
-                  </td>
-                  <td className={tdCls}>
-                    <Link className={linkCls} to={`/admin/sohbetler/${r.id}`}>
-                      Aç
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                      {r.kaynak === "embed" ? " · Embed" : ""}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </aside>
+
+      <section className={cx("flex min-h-0 min-w-0 flex-1 flex-col", !id && "hidden md:flex")}>
+        {id ? (
+          <SohbetThread id={id} />
+        ) : (
+          <div className="flex flex-1 flex-col items-center justify-center bg-[#efeae2] px-6 text-center dark:bg-[#0b141a]">
+            <div className="mb-3 grid h-16 w-16 place-items-center rounded-full bg-white/80 text-3xl dark:bg-[#202c33]">💬</div>
+            <p className="text-lg font-medium text-zinc-700 dark:text-[#e9edef]">Gelen kutusu</p>
+            <p className="mt-1 max-w-sm text-sm text-zinc-500 dark:text-[#8696a0]">
+              Soldan bir sohbet seç. Müşteri, asistan ve tool sonuçları WhatsApp düzeninde görünür.
+            </p>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

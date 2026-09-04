@@ -1,25 +1,11 @@
-import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { ChatMd } from "../../components/ChatMd";
 import { api } from "../../api";
-import {
-  cardCls,
-  cx,
-  errText,
-  linkCls,
-  muted,
-  pageStack,
-  pageTitle,
-  pillOn,
-  tableCls,
-  tableWrap,
-  tdCls,
-  thCls,
-  trendDown,
-  trCls,
-} from "./ui";
+import { JsonView, parseJsonText, toolOzet } from "./JsonView";
+import { cx, errText, muted, pillOn, trendDown } from "./ui";
 
-type Mesaj = {
+export type InboxMesaj = {
   id: number;
   rol: string;
   icerik: string;
@@ -29,7 +15,7 @@ type Mesaj = {
   created_at: string;
 };
 
-type Oturum = {
+export type InboxOturum = {
   id: string;
   kaynak: string;
   host_origin: string | null;
@@ -54,29 +40,76 @@ type Olay = {
   created_at: string;
 };
 
-function fmt(s: string | null | undefined) {
-  if (!s) return "—";
+const AVATAR = [
+  "bg-teal-600",
+  "bg-indigo-600",
+  "bg-amber-600",
+  "bg-rose-600",
+  "bg-sky-600",
+  "bg-emerald-700",
+];
+
+export function avatarCls(id: string) {
+  let h = 0;
+  for (const c of id) h = (h + c.charCodeAt(0)) % AVATAR.length;
+  return AVATAR[h] ?? AVATAR[0];
+}
+
+export function initials(name: string) {
+  const p = name.trim().split(/\s+/).filter(Boolean);
+  const a = p[0]?.[0] ?? "?";
+  const b = p.length > 1 ? p[p.length - 1][0] : p[0]?.[1] ?? "";
+  return (a + b).toUpperCase();
+}
+
+export function waClock(s: string | null | undefined) {
+  if (!s) return "";
   const d = new Date(s);
-  return Number.isNaN(d.getTime()) ? String(s) : d.toLocaleString("tr-TR");
+  if (Number.isNaN(d.getTime())) return String(s);
+  return d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 }
 
-function rolAd(rol: string) {
-  if (rol === "user") return "Müşteri";
-  if (rol === "assistant") return "Asistan";
-  if (rol === "tool") return "Tool";
-  if (rol === "system") return "Sistem";
-  return rol;
+export function waListTime(s: string | null | undefined) {
+  if (!s) return "";
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return String(s);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return waClock(s);
+  const yest = new Date(now);
+  yest.setDate(now.getDate() - 1);
+  if (d.toDateString() === yest.toDateString()) return "Dün";
+  return d.toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
 }
 
-export function SohbetDetayPage() {
-  const { id } = useParams();
-  const [oturum, setOturum] = useState<Oturum | null>(null);
-  const [mesajlar, setMesajlar] = useState<Mesaj[]>([]);
+function waDayLabel(s: string) {
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s;
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return "Bugün";
+  const yest = new Date(now);
+  yest.setDate(now.getDate() - 1);
+  if (d.toDateString() === yest.toDateString()) return "Dün";
+  return d.toLocaleDateString("tr-TR", { weekday: "long", day: "numeric", month: "long" });
+}
+
+function dayKey(s: string) {
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s;
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+export function SohbetThread({ id }: { id: string }) {
+  const [oturum, setOturum] = useState<InboxOturum | null>(null);
+  const [mesajlar, setMesajlar] = useState<InboxMesaj[]>([]);
   const [olaylar, setOlaylar] = useState<Olay[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const [olayAcik, setOlayAcik] = useState(false);
+  const scroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!id) return;
+    setErr(null);
+    setOturum(null);
+    setMesajlar([]);
     api
       .sohbet(id)
       .then((d) => {
@@ -84,166 +117,217 @@ export function SohbetDetayPage() {
         setMesajlar(d.mesajlar ?? []);
         setOlaylar(d.olaylar ?? []);
       })
-      .catch((e) => setErr(String(e.message)));
+      .catch((e) => setErr(String((e as Error).message)));
   }, [id]);
 
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [mesajlar, id]);
+
+  const baslik = oturum?.webchat_ad ?? "Sohbet";
+  const alt = [oturum?.agent_ad, oturum?.kaynak === "embed" ? "Embed" : "Site", oturum?.host_origin]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
-    <div className={pageStack}>
-      <p>
-        <Link className={linkCls} to="/admin/sohbetler">
-          ← Gelen kutusu
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#efeae2] dark:bg-[#0b141a]">
+      <header className="flex shrink-0 items-center gap-3 border-b border-black/5 bg-[#f0f2f5] px-3 py-2.5 dark:border-white/5 dark:bg-[#202c33]">
+        <Link
+          to="/admin/sohbetler"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-zinc-600 hover:bg-black/5 md:hidden dark:text-[#e9edef] dark:hover:bg-white/5"
+          aria-label="Listeye dön"
+        >
+          ←
         </Link>
-      </p>
-      <h1 className={pageTitle}>Sohbet</h1>
-      {err && <p className={errText}>{err}</p>}
-      {oturum && (
-        <dl className={cx(cardCls, "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3")}>
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-zinc-500">Webchat</dt>
-            <dd className="mt-0.5 text-zinc-900 dark:text-zinc-50">
-              {oturum.webchat_ad ?? "—"}
-              {oturum.webchat_slug ? <span className={muted}> · {oturum.webchat_slug}</span> : null}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-zinc-500">Agent</dt>
-            <dd className="mt-0.5 text-zinc-900 dark:text-zinc-50">
-              {oturum.agent_ad ?? "—"}
-              {oturum.model ? (
-                <span className={muted}>
-                  {" "}
-                  · {oturum.llm_saglayici} / {oturum.model}
-                </span>
-              ) : null}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-zinc-500">Kaynak</dt>
-            <dd className="mt-0.5 text-zinc-900 dark:text-zinc-50">
-              {oturum.kaynak === "embed" ? "Embed" : "Site"}
-              {oturum.host_origin ? ` · ${oturum.host_origin}` : ""}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-zinc-500">Zaman</dt>
-            <dd className="mt-0.5 text-zinc-900 dark:text-zinc-50">
-              {fmt(oturum.created_at)} → {fmt(oturum.updated_at)}
-            </dd>
-          </div>
-          {oturum.origin_lat != null && oturum.origin_lng != null && (
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-zinc-500">Konum</dt>
-              <dd className="mt-0.5 text-zinc-900 dark:text-zinc-50">
-                {Number(oturum.origin_lat).toFixed(5)}, {Number(oturum.origin_lng).toFixed(5)}
-              </dd>
-            </div>
-          )}
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-zinc-500">Oturum</dt>
-            <dd className={cx("mt-0.5", muted)}>{oturum.id}</dd>
-          </div>
-        </dl>
-      )}
-      <div className="flex max-w-3xl flex-col gap-2">
-        {mesajlar.map((m) => (
-          <MesajBubble key={m.id} m={m} />
-        ))}
+        <span className={cx("grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-semibold text-white", avatarCls(id))}>
+          {initials(baslik)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold text-zinc-900 dark:text-[#e9edef]">{baslik}</div>
+          <div className="truncate text-xs text-zinc-500 dark:text-[#8696a0]">{alt || " "}</div>
+        </div>
+        {oturum?.origin_lat != null && oturum.origin_lng != null && (
+          <span className="hidden shrink-0 rounded-full bg-black/5 px-2 py-1 font-mono text-[11px] text-zinc-600 sm:inline dark:bg-white/5 dark:text-zinc-300">
+            {Number(oturum.origin_lat).toFixed(4)}, {Number(oturum.origin_lng).toFixed(4)}
+          </span>
+        )}
+      </header>
+
+      <div ref={scroller} className="wa-chat-bg min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-8">
+        {err && <p className={cx(errText, "mb-3 text-sm")}>{err}</p>}
+        <div className="mx-auto flex max-w-3xl flex-col gap-1.5">
+          {mesajlar.map((m, i) => {
+            const prev = mesajlar[i - 1];
+            const showDay = !prev || dayKey(prev.created_at) !== dayKey(m.created_at);
+            return (
+              <div key={m.id}>
+                {showDay && (
+                  <div className="my-3 flex justify-center">
+                    <span className="rounded-lg bg-white/80 px-3 py-1 text-[11px] font-medium text-zinc-600 shadow-sm dark:bg-[#182229] dark:text-[#8696a0]">
+                      {waDayLabel(m.created_at)}
+                    </span>
+                  </div>
+                )}
+                <MesajSatir m={m} />
+              </div>
+            );
+          })}
+          {mesajlar.length === 0 && !err && <p className={cx(muted, "py-8 text-center text-sm")}>Mesaj yok.</p>}
+        </div>
       </div>
+
       {olaylar.length > 0 && (
-        <>
-          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Olay kaydı</h2>
-          <div className={tableWrap}>
-            <table className={tableCls}>
-              <thead>
-                <tr>
-                  <th className={thCls}>Zaman</th>
-                  <th className={thCls}>Olay</th>
-                  <th className={thCls}>Tool</th>
-                  <th className={thCls}>Süre</th>
-                  <th className={thCls}>Durum</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                {olaylar.map((o) => (
-                  <tr key={o.id} className={trCls}>
-                    <td className={cx(tdCls, "whitespace-nowrap")}>{fmt(o.created_at)}</td>
-                    <td className={tdCls}>
-                      <code className="font-mono text-xs text-indigo-600 dark:text-indigo-400">{o.fonksiyon_kod}</code>
-                    </td>
-                    <td className={tdCls}>{o.tool_ad ?? "—"}</td>
-                    <td className={tdCls}>{o.sure_ms != null ? `${o.sure_ms} ms` : "—"}</td>
-                    <td className={tdCls}>
-                      <span className={o.ok ? pillOn : trendDown}>{o.ok ? "tamam" : "hata"}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
+        <div className="shrink-0 border-t border-black/5 bg-[#f0f2f5] dark:border-white/5 dark:bg-[#202c33]">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between px-4 py-2 text-left text-xs font-medium text-zinc-600 dark:text-[#8696a0]"
+            onClick={() => setOlayAcik((v) => !v)}
+          >
+            Olay kaydı ({olaylar.length})
+            <span>{olayAcik ? "▾" : "▸"}</span>
+          </button>
+          {olayAcik && (
+            <ul className="max-h-40 overflow-y-auto border-t border-black/5 px-4 py-2 text-xs dark:border-white/5">
+              {olaylar.map((o) => (
+                <li key={o.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 py-1">
+                  <time className="text-zinc-400">{waClock(o.created_at)}</time>
+                  <code className="font-mono text-indigo-600 dark:text-indigo-400">{o.fonksiyon_kod}</code>
+                  {o.tool_ad && <span className="text-zinc-500">{o.tool_ad}</span>}
+                  <span className={o.ok ? pillOn : trendDown}>{o.ok ? "tamam" : "hata"}</span>
+                  {o.sure_ms != null && <span className="text-zinc-400">{o.sure_ms} ms</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
-function MesajBubble({ m }: { m: Mesaj }) {
+function MesajSatir({ m }: { m: InboxMesaj }) {
   const kind = typeof m.meta?.kind === "string" ? m.meta.kind : null;
-  const hiddenCall = kind === "tool_calls" && !m.icerik?.trim();
-  const sure = typeof m.meta?.sure_ms === "number" ? m.meta.sure_ms : null;
-  const model = typeof m.meta?.model === "string" ? m.meta.model : null;
-  const sag = typeof m.meta?.llm_saglayici === "string" ? m.meta.llm_saglayici : null;
-
-  if (m.rol === "tool" || hiddenCall) {
-    const ad = m.tool_ad || (typeof m.meta?.tool_ad === "string" ? m.meta.tool_ad : "tool");
-    const ok = m.meta?.ok === false ? false : true;
+  if (kind === "tool_calls") return <ToolCagriKart m={m} />;
+  if (m.rol === "tool") return <ToolSonucKart m={m} />;
+  if (m.rol === "system") {
     return (
-      <div
-        className={cx(
-          "w-full rounded-xl border p-4 text-sm",
-          ok
-            ? "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
-            : "border-red-500 bg-red-500/10",
-        )}
-      >
-        <small className="mb-1 block text-xs text-zinc-500">
-          {hiddenCall ? "Tool çağrısı" : "Tool sonucu"} · {ad}
-          {m.fonksiyon_kod ? ` → ${m.fonksiyon_kod}` : ""}
-        </small>
-        {hiddenCall ? (
-          <div className={cx(muted, "text-xs")}>{JSON.stringify(m.meta?.tool_calls ?? [])}</div>
-        ) : (
-          <pre className="mt-1.5 max-h-44 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-zinc-900 dark:text-zinc-50">
-            {truncate(m.icerik, 1200)}
-          </pre>
-        )}
-        <time className="mt-1.5 block text-xs text-zinc-500">{fmt(m.created_at)}</time>
+      <div className="my-1 flex justify-center">
+        <span className="max-w-[90%] rounded-lg bg-white/80 px-3 py-1.5 text-center text-xs text-zinc-600 dark:bg-[#182229] dark:text-[#8696a0]">
+          {m.icerik}
+        </span>
       </div>
     );
   }
+  return <MetinBalon m={m} />;
+}
 
+function MetinBalon({ m }: { m: InboxMesaj }) {
   const isUser = m.rol === "user";
+  const sure = typeof m.meta?.sure_ms === "number" ? m.meta.sure_ms : null;
+  const model = typeof m.meta?.model === "string" ? m.meta.model : null;
+  const sag = typeof m.meta?.llm_saglayici === "string" ? m.meta.llm_saglayici : null;
+  const meta = [sag, model].filter(Boolean).join(" / ");
   return (
-    <div
-      className={cx(
-        "max-w-[90%] rounded-xl border px-3 py-2.5 text-sm",
-        isUser
-          ? "self-end border-indigo-600 bg-indigo-600 text-white"
-          : "self-start border-zinc-200 bg-white text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50",
-      )}
-    >
-      <small className={cx("mb-1 block text-xs", isUser ? "text-white/70" : "text-zinc-500")}>
-        {rolAd(m.rol)}
-        {sag || model ? ` · ${[sag, model].filter(Boolean).join(" / ")}` : ""}
-        {sure != null ? ` · ${sure} ms` : ""}
-      </small>
-      <div>
-        <ChatMd text={m.icerik} />
+    <div className={cx("flex", isUser ? "justify-end" : "justify-start")}>
+      <div
+        className={cx(
+          "max-w-[85%] px-2.5 pb-1.5 pt-1.5 text-[13.5px] leading-snug shadow-sm sm:max-w-[75%]",
+          isUser
+            ? "rounded-tl-lg rounded-tr-sm rounded-br-lg rounded-bl-lg bg-[#d9fdd3] text-zinc-900 dark:bg-[#005c4b] dark:text-[#e9edef]"
+            : "rounded-tl-sm rounded-tr-lg rounded-br-lg rounded-bl-lg bg-white text-zinc-900 dark:bg-[#202c33] dark:text-[#e9edef]",
+        )}
+      >
+        {!isUser && (meta || sure != null) && (
+          <div className="mb-0.5 text-[11px] font-medium text-teal-700 dark:text-teal-400">
+            Asistan{meta ? ` · ${meta}` : ""}
+            {sure != null ? ` · ${sure} ms` : ""}
+          </div>
+        )}
+        <div className={cx("wa-bubble-md", isUser && "[&_.chat-md_code]:bg-black/10")}>
+          {m.icerik?.trim() ? <ChatMd text={m.icerik} /> : <span className="text-zinc-400">—</span>}
+        </div>
+        <div className={cx("mt-0.5 text-right text-[10px] leading-none", isUser ? "text-zinc-500 dark:text-white/50" : "text-zinc-400")}>
+          {waClock(m.created_at)}
+        </div>
       </div>
-      <time className={cx("mt-1.5 block text-xs", isUser ? "text-white/55" : "text-zinc-500")}>{fmt(m.created_at)}</time>
     </div>
   );
 }
 
-function truncate(s: string, n: number) {
-  return s.length > n ? `${s.slice(0, n)}…` : s;
+function ToolCagriKart({ m }: { m: InboxMesaj }) {
+  const calls = Array.isArray(m.meta?.tool_calls) ? m.meta.tool_calls : [];
+  return (
+    <div className="flex justify-center py-1">
+      <div className="w-full max-w-xl rounded-xl border border-sky-200/80 bg-sky-50/90 px-3 py-2 text-xs shadow-sm dark:border-sky-900 dark:bg-[#1a2a32]">
+        <div className="mb-1.5 font-semibold text-sky-800 dark:text-sky-300">Tool çağrısı</div>
+        {calls.length === 0 && <p className="text-zinc-500">Boş çağrı</p>}
+        {calls.map((raw, i) => {
+          const c = raw && typeof raw === "object" ? (raw as { name?: unknown; arguments?: unknown }) : {};
+          const ad = typeof c.name === "string" ? c.name : "tool";
+          const parsed = typeof c.arguments === "string" ? parseJsonText(c.arguments) : c.arguments ?? {};
+          return (
+            <div key={i} className="mt-2 first:mt-0">
+              <code className="font-mono text-[11px] text-indigo-600 dark:text-indigo-300">{ad}</code>
+              <JsonView value={parsed} defaultOpen={2} className="mt-1 max-h-56" />
+            </div>
+          );
+        })}
+        {m.icerik?.trim() ? (
+          <div className="mt-2 border-t border-sky-200/70 pt-2 dark:border-sky-900">
+            <ChatMd text={m.icerik} />
+          </div>
+        ) : null}
+        <div className="mt-1 text-right text-[10px] text-zinc-400">{waClock(m.created_at)}</div>
+      </div>
+    </div>
+  );
+}
+
+function ToolSonucKart({ m }: { m: InboxMesaj }) {
+  const parsed = useMemo(() => parseJsonText(m.icerik ?? ""), [m.icerik]);
+  const ok = m.meta?.ok === false || (parsed && typeof parsed === "object" && (parsed as { ok?: unknown }).ok === false) ? false : true;
+  const ad = m.tool_ad || (typeof m.meta?.tool_ad === "string" ? m.meta.tool_ad : "tool");
+  const ozet = toolOzet(parsed);
+  const [kopyalandi, setKopyalandi] = useState(false);
+
+  function kopyala() {
+    const text = typeof parsed === "string" ? parsed : JSON.stringify(parsed, null, 2);
+    void navigator.clipboard.writeText(text).then(() => {
+      setKopyalandi(true);
+      window.setTimeout(() => setKopyalandi(false), 1200);
+    });
+  }
+
+  return (
+    <div className="flex justify-center py-1">
+      <div
+        className={cx(
+          "w-full max-w-xl rounded-xl border px-3 py-2 text-xs shadow-sm",
+          ok
+            ? "border-zinc-200/90 bg-white/90 dark:border-zinc-700 dark:bg-[#1f2c33]"
+            : "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/40",
+        )}
+      >
+        <div className="mb-1.5 flex flex-wrap items-center gap-2">
+          <span className="font-semibold text-zinc-700 dark:text-zinc-200">Tool sonucu</span>
+          <code className="font-mono text-[11px] text-indigo-600 dark:text-indigo-300">{ad}</code>
+          {m.fonksiyon_kod && m.fonksiyon_kod !== ad && (
+            <span className="text-zinc-400">→ {m.fonksiyon_kod}</span>
+          )}
+          <span className={ok ? pillOn : trendDown}>{ok ? ozet ?? "tamam" : ozet ?? "hata"}</span>
+          <button type="button" className="ml-auto text-[11px] text-zinc-500 hover:underline" onClick={kopyala}>
+            {kopyalandi ? "kopyalandı" : "kopyala"}
+          </button>
+        </div>
+        {typeof parsed === "string" ? (
+          <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words font-mono text-[12px]">{parsed}</pre>
+        ) : (
+          <JsonView value={parsed} defaultOpen={2} className="max-h-80" />
+        )}
+        <div className="mt-1 text-right text-[10px] text-zinc-400">{waClock(m.created_at)}</div>
+      </div>
+    </div>
+  );
 }

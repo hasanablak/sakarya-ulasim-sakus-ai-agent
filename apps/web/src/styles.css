@@ -306,3 +306,16 @@ html.embed, html.embed body, html.embed #root {
   box-shadow: none;
 }
 .hat-bus-label::before { display: none; }
+
+.wa-chat-bg {
+  background-color: #efeae2;
+  background-image: radial-gradient(rgba(17, 27, 33, 0.06) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+.dark .wa-chat-bg {
+  background-color: #0b141a;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+}
+.wa-bubble-md .chat-md p { margin: 0 0 0.35em; }
+.wa-bubble-md .chat-md p:last-child { margin-bottom: 0; }
+.wa-bubble-md .chat-md ul, .wa-bubble-md .chat-md ol { margin: 0.2em 0 0.2em 1.1em; }

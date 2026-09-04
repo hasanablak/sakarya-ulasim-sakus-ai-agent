@@ -54,9 +54,16 @@ export function AdminLayout() {
     writeAdminCollapsed(collapsed);
   }, [collapsed]);
 
+  const inbox = pathname.startsWith("/admin/sohbetler");
+
   return (
     <div className={cx(dark && "dark")}>
-      <div className="flex min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
+      <div
+        className={cx(
+          "flex bg-zinc-50 font-sans text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50",
+          inbox ? "h-screen overflow-hidden" : "min-h-screen",
+        )}
+      >
         <aside
           className={cx(
             "sticky top-0 flex h-screen shrink-0 flex-col border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900",
@@ -79,7 +86,18 @@ export function AdminLayout() {
           </div>
           <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
             {NAV.map((item) => (
-              <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => navItem(isActive, collapsed)} title={item.label}>
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  navItem(
+                    item.to === "/admin/sohbetler" ? pathname.startsWith("/admin/sohbetler") : isActive,
+                    collapsed,
+                  )
+                }
+                title={item.label}
+              >
                 <item.icon />
                 {!collapsed && <span>{item.label}</span>}
               </NavLink>
@@ -113,8 +131,8 @@ export function AdminLayout() {
             </button>
           </div>
         </aside>
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-zinc-200 bg-white/80 px-6 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/80">
+        <div className={cx("flex min-w-0 flex-1 flex-col", inbox && "min-h-0")}>
+          <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between border-b border-zinc-200 bg-white/80 px-6 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/80">
             <h1 className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{headerTitle(pathname)}</h1>
             <button
               type="button"
@@ -125,7 +143,13 @@ export function AdminLayout() {
               {dark ? <IconSun /> : <IconMoon />}
             </button>
           </header>
-          <main className="mx-auto w-full max-w-screen-2xl px-6 py-8">
+          <main
+            className={
+              inbox
+                ? "flex min-h-0 flex-1 flex-col overflow-hidden"
+                : "mx-auto w-full max-w-screen-2xl px-6 py-8"
+            }
+          >
             <Outlet />
           </main>
         </div>

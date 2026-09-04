@@ -10,7 +10,6 @@ import { AgentlerPage } from "./pages/admin/Agentler";
 import { HatDetayPage } from "./pages/admin/HatDetay";
 import { HatlarPage } from "./pages/admin/Hatlar";
 import { LoginPage } from "./pages/admin/Login";
-import { SohbetDetayPage } from "./pages/admin/SohbetDetay";
 import { SohbetlerPage } from "./pages/admin/Sohbetler";
 import { ToolFormPage } from "./pages/admin/ToolForm";
 import { ToollarPage } from "./pages/admin/Toollar";
@@ -42,7 +41,7 @@ export function App() {
           <Route index element={<HatlarPage />} />
           <Route path="hatlar/:slug" element={<HatDetayPage />} />
           <Route path="sohbetler" element={<SohbetlerPage />} />
-          <Route path="sohbetler/:id" element={<SohbetDetayPage />} />
+          <Route path="sohbetler/:id" element={<SohbetlerPage />} />
           <Route path="agentler" element={<AgentlerPage />} />
           <Route path="agentler/yeni" element={<AgentFormPage />} />
           <Route path="agentler/:id" element={<AgentFormPage />} />

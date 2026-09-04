@@ -102,7 +102,7 @@ export function HatlarPage() {
         </div>
       </header>
       {lastJob && <IngestBanner job={lastJob} />}
-      {ozet && <HatlarOzet ozet={ozet} liveCount={live.length} scraperUp={scraperUp} />}
+      {ozet && <HatlarOzet ozet={ozet} />}
       {msg && lastJob?.status !== "running" && (
         <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-500">{msg}</p>
       )}

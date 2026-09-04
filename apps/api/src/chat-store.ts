@@ -212,3 +212,46 @@ export async function getOturumDetay(id: string) {
     olaylar,
   };
 }
+
+export type SohbetOzet = {
+  oturum: number;
+  bugun: number;
+  userMesaj: number;
+  asistanMesaj: number;
+  son: string | null;
+};
+
+function say(row: RowDataPacket | undefined, key = "n"): number {
+  return Number(row?.[key] ?? 0);
+}
+
+export async function sohbetOzet(): Promise<SohbetOzet> {
+  const userVar = `EXISTS (
+    SELECT 1 FROM sohbet_mesajlari m
+    WHERE m.oturum_id = o.id AND m.rol = 'user' AND CHAR_LENGTH(TRIM(m.icerik)) > 0
+  )`;
+  const [oturum] = await query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM sohbet_oturumlari o WHERE ${userVar}`,
+  );
+  const [bugun] = await query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM sohbet_oturumlari o
+     WHERE o.updated_at >= (NOW() - INTERVAL 1 DAY) AND ${userVar}`,
+  );
+  const [userMesaj] = await query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM sohbet_mesajlari
+     WHERE rol = 'user' AND CHAR_LENGTH(TRIM(icerik)) > 0`,
+  );
+  const [asistanMesaj] = await query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM sohbet_mesajlari
+     WHERE rol = 'assistant' AND CHAR_LENGTH(TRIM(icerik)) > 0`,
+  );
+  const [son] = await query<RowDataPacket[]>(`SELECT MAX(updated_at) AS ts FROM sohbet_oturumlari`);
+  const sonTs = son?.ts instanceof Date ? son.ts.toISOString() : son?.ts ? String(son.ts) : null;
+  return {
+    oturum: say(oturum),
+    bugun: say(bugun),
+    userMesaj: say(userMesaj),
+    asistanMesaj: say(asistanMesaj),
+    son: sonTs,
+  };
+}

@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { cardCls, muted, trendDown, trendUp, trendWarn } from "./ui";
 
 type Tur = { ad: string; n: number; renk: string | null };
@@ -13,6 +14,13 @@ export type HatOzetData = {
   arac: number;
   tazeArac: number;
   aracliHat: number;
+  sohbet?: {
+    oturum: number;
+    bugun: number;
+    userMesaj: number;
+    asistanMesaj: number;
+    son: string | null;
+  };
 };
 
 function rel(iso: string | null): string {
@@ -28,18 +36,11 @@ function rel(iso: string | null): string {
   return `${gun} gün önce`;
 }
 
-export function HatlarOzet({
-  ozet,
-  liveCount,
-  scraperUp,
-}: {
-  ozet: HatOzetData;
-  liveCount: number;
-  scraperUp: boolean;
-}) {
+export function HatlarOzet({ ozet }: { ozet: HatOzetData }) {
   const turMax = Math.max(1, ...ozet.turler.map((t) => t.n));
-  const tazePct = ozet.arac ? Math.round((ozet.tazeArac / ozet.arac) * 100) : 0;
   const tazeHatPct = ozet.hat ? Math.round(((ozet.hat - ozet.eskiHat) / ozet.hat) * 100) : 0;
+  const sohbet = ozet.sohbet ?? { oturum: 0, bugun: 0, userMesaj: 0, asistanMesaj: 0, son: null };
+  const sohbetPct = sohbet.oturum ? Math.round((sohbet.bugun / sohbet.oturum) * 100) : 0;
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -100,26 +101,25 @@ export function HatlarOzet({
         </div>
       </article>
 
-      <article className={cardCls}>
+      <Link to="/admin/sohbetler" className={`${cardCls} block no-underline transition-shadow hover:shadow-md`}>
         <div className="flex items-start justify-between gap-3">
-          <p className="text-sm text-zinc-500">Canlı filo</p>
-          <span className={scraperUp && tazePct >= 50 ? trendUp : scraperUp ? trendWarn : trendDown}>%{tazePct}</span>
+          <p className="text-sm text-zinc-500">Sohbetler</p>
+          <span className={sohbet.bugun > 0 ? trendUp : sohbet.oturum > 0 ? trendWarn : trendDown}>
+            {sohbet.bugun} bugün
+          </span>
         </div>
-        <p className="mt-2 text-3xl font-bold text-zinc-900 dark:text-zinc-50">{ozet.tazeArac}</p>
-        <p className="mt-1 text-sm text-zinc-500">son 90 sn içinde konum</p>
+        <p className="mt-2 text-3xl font-bold text-zinc-900 dark:text-zinc-50">{sohbet.oturum}</p>
+        <p className="mt-1 text-sm text-zinc-500">gerçekleşen sohbet</p>
         <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-          <i
-            className={`block h-full rounded-full ${scraperUp ? "bg-emerald-500" : "bg-red-500"}`}
-            style={{ width: `${tazePct}%` }}
-          />
+          <i className="block h-full rounded-full bg-teal-600" style={{ width: `${sohbetPct}%` }} />
         </div>
         <div className="mt-2 flex flex-col gap-1 text-sm text-zinc-500">
+          <span>Son: {rel(sohbet.son)}</span>
           <span>
-            {ozet.arac} kayıtlı araç · {ozet.aracliHat} hat
+            {sohbet.userMesaj} müşteri mesajı · {sohbet.asistanMesaj} yanıt
           </span>
-          <span>{scraperUp ? `${liveCount} canlı takip` : "scraper kapalı"}</span>
         </div>
-      </article>
+      </Link>
     </div>
   );
 }

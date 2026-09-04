@@ -1,6 +1,7 @@
 import type { NormalizedVehicle } from "@sakus/shared";
 import { apiConfig } from "./config.js";
 import { exec, query } from "./db.js";
+import { sohbetOzet, type SohbetOzet } from "./chat-store.js";
 import { genisletAramaToken } from "./yer-sozlugu.js";
 import type { RowDataPacket } from "mysql2";
 
@@ -237,6 +238,7 @@ export type HatOzet = {
   arac: number;
   tazeArac: number;
   aracliHat: number;
+  sohbet: SohbetOzet;
 };
 
 function n(row: RowDataPacket | undefined, key: string): number {
@@ -272,6 +274,7 @@ export async function hatOzet(): Promise<HatOzet> {
   const [aracli] = await query<RowDataPacket[]>(
     `SELECT COUNT(DISTINCT hat_id) AS n FROM arac_son_konum`,
   );
+  const sohbet = await sohbetOzet();
   const sonTs = son?.ts instanceof Date ? son.ts.toISOString() : son?.ts ? String(son.ts) : null;
   return {
     hat: n(hat, "n"),
@@ -288,5 +291,6 @@ export async function hatOzet(): Promise<HatOzet> {
     arac: n(arac, "n"),
     tazeArac: n(taze, "n"),
     aracliHat: n(aracli, "n"),
+    sohbet,
   };
 }

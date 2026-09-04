@@ -8,6 +8,7 @@ import {
   listLlmGecmisi,
   listPublicMesajlar,
   logSohbetOlay,
+  oturumKonumu,
   parseHostOrigin,
   touchOturum,
   type PublicMesaj,
@@ -27,15 +28,32 @@ const TOOL_JSON_CAP = 6000;
 const TABAN_SISTEM =
   "Sen Sakarya Büyükşehir Belediyesi toplu taşıma asistanısın. Yanıtların Türkçe, kısa ve yolcuya yönelik olsun. " +
   "Tool sonuçlarındaki ham JSON’u olduğu gibi yapıştırma; özetle. Bilmediğin hat, saat veya konumu uydurma. " +
-  "Yakın durak için yakin_duraklar tool’unu kullan. SAKUS haritası veya belediye sitesine yönlendirebilirsin. " +
+  "Koordinat uydurma. Yakın durak için yakin_duraklar; “X’e nasıl giderim?” için rota_oneri(hedef=X) kullan. " +
+  "rota_oneri yakın durak hatları ile hedefi kesiştirir — yerden_gecen_hatlar listesini konum varken okuma. " +
+  "SAKUS haritası veya belediye sitesine yönlendirebilirsin. " +
   "“En yakın sefer” listedeki ilk sabah saati değil, Türkiye saatine göre şu andan SONRAKİ kalkıştır. " +
   "otobus_saat_sorgula çıktısındaki sonraki / yaklasan / simdi alanlarını kullan; bugün bittiyse yarını söyle.\n" +
   yerSozluguPrompt();
+
+function konumPrompt(origin?: { lat: number; lng: number }, konumDurum?: string): string {
+  if (origin && Number.isFinite(origin.lat) && Number.isFinite(origin.lng)) {
+    return (
+      `KULLANICI KONUMU VAR (tarayıcı): ${origin.lat.toFixed(5)}, ${origin.lng.toFixed(5)}. ` +
+      `Bu koordinatı yolcuya okuma. “nasıl giderim” / yakın durak için rota_oneri veya yakin_duraklar çağır; lat/lng uydurma.`
+    );
+  }
+  const neden = konumDurum && konumDurum !== "var" ? ` Neden: ${konumDurum}.` : "";
+  return (
+    `KULLANICI KONUMU YOK.${neden} Koordinat uydurma. rota_oneri / yakin_duraklar çağırma. ` +
+    `Kısa söyle: tarayıcıdan konum izni vermesini iste, sonra aynı soruyu tekrar yazsın.`
+  );
+}
 
 export async function handleChatTurn(input: {
   sessionId?: string;
   message: string;
   origin?: { lat: number; lng: number };
+  konum_durum?: string;
   webchatRef?: string;
   host?: string;
   headerOrigin?: string;
@@ -77,7 +95,15 @@ export async function handleChatTurn(input: {
 
   const t0 = Date.now();
   try {
-    await produceReply({ sessionId, text, origin: input.origin, webchatId: webchat?.id ?? null, agent });
+    const origin = input.origin ?? (await oturumKonumu(sessionId));
+    await produceReply({
+      sessionId,
+      text,
+      origin,
+      konumDurum: input.konum_durum,
+      webchatId: webchat?.id ?? null,
+      agent,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[chat] llm hata:", msg);
@@ -105,10 +131,11 @@ async function produceReply(opts: {
   sessionId: string;
   text: string;
   origin?: { lat: number; lng: number };
+  konumDurum?: string;
   webchatId: number | null;
   agent: Awaited<ReturnType<typeof getAgentForChat>>;
 }): Promise<void> {
-  const { sessionId, text, origin, webchatId, agent } = opts;
+  const { sessionId, text, origin, konumDurum, webchatId, agent } = opts;
 
   if (!agent || !agent.aktif) {
     const { replyText, meta } = await draftChatReply(text);
@@ -142,7 +169,7 @@ async function produceReply(opts: {
   }
 
   const t0 = Date.now();
-  const messages = await buildLlmMessages(sessionId, agent.sistem_prompt, origin);
+  const messages = await buildLlmMessages(sessionId, agent.sistem_prompt, origin, konumDurum);
   const toolMap = new Map(agent.tools.map((t) => [t.ad, t.fonksiyon_kod]));
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -243,11 +270,9 @@ async function buildLlmMessages(
   sessionId: string,
   sistemPrompt: string,
   origin?: { lat: number; lng: number },
+  konumDurum?: string,
 ): Promise<LlmMessage[]> {
-  const loc =
-    origin && Number.isFinite(origin.lat) && Number.isFinite(origin.lng)
-      ? `Kullanıcının tarayıcı konumu (yaklaşık): ${origin.lat.toFixed(5)}, ${origin.lng.toFixed(5)}.`
-      : "Kullanıcı konum paylaşmamış olabilir.";
+  const loc = konumPrompt(origin, konumDurum);
   const simdi = new Intl.DateTimeFormat("tr-TR", {
     timeZone: "Europe/Istanbul",
     weekday: "long",

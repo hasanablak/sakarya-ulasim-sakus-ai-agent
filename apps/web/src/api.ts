@@ -46,6 +46,7 @@ export const api = {
     sessionId?: string;
     message: string;
     origin?: { lat: number; lng: number };
+    konum_durum?: string;
     webchatSlug?: string;
     webchatKey?: string;
     host?: string;

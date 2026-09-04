@@ -256,6 +256,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       sessionId?: string;
       message?: string;
       origin?: { lat: number; lng: number };
+      konum_durum?: string;
       webchatSlug?: string;
       webchatKey?: string;
       host?: string;
@@ -268,6 +269,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         sessionId: body.sessionId,
         message: text,
         origin: body.origin,
+        konum_durum: body.konum_durum,
         webchatRef: body.webchatKey?.trim() || body.webchatSlug?.trim(),
         host: body.host,
         headerOrigin: typeof req.headers.origin === "string" ? req.headers.origin : undefined,

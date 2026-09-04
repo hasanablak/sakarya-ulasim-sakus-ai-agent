@@ -1,6 +1,24 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api";
+import {
+  btnPrimary,
+  cx,
+  errText,
+  linkCls,
+  muted,
+  pageHead,
+  pageStack,
+  pageSub,
+  pageTitle,
+  pillOff,
+  pillOn,
+  tableCls,
+  tableWrap,
+  tdCls,
+  thCls,
+  trCls,
+} from "./ui";
 
 type ToolRow = {
   id: number;
@@ -22,57 +40,61 @@ export function ToollarPage() {
   }, []);
 
   return (
-    <div>
-      <header className="page-head">
+    <div className={pageStack}>
+      <header className={pageHead}>
         <div>
-          <h1>Tool'lar</h1>
-          <p>
+          <h1 className={pageTitle}>Tool'lar</h1>
+          <p className={pageSub}>
             Tool tek başına çalışmaz; bir kod fonksiyonuna bağlanır. Beşinci fonksiyon{" "}
-            <code>yakin_duraklar</code>: konum verince 600 m içindeki durakları ve geçen hatları döner — rota
-            önerisinin temeli.
+            <code className="font-mono text-xs text-indigo-600 dark:text-indigo-400">yakin_duraklar</code>: konum verince
+            600 m içindeki durakları ve geçen hatları döner — rota önerisinin temeli.
           </p>
         </div>
-        <Link to="/admin/toollar/yeni" className="ghost">
+        <Link to="/admin/toollar/yeni" className={btnPrimary}>
           Yeni tool
         </Link>
       </header>
-      {err && <p className="err">{err}</p>}
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Ad</th>
-            <th>Fonksiyon</th>
-            <th>Durum</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 && (
+      {err && <p className={errText}>{err}</p>}
+      <div className={tableWrap}>
+        <table className={tableCls}>
+          <thead>
             <tr>
-              <td colSpan={4} className="muted">
-                Kayıt yok. API açılışında varsayılan tool’lar eklenir.
-              </td>
+              <th className={thCls}>Ad</th>
+              <th className={thCls}>Fonksiyon</th>
+              <th className={thCls}>Durum</th>
+              <th className={thCls}></th>
             </tr>
-          )}
-          {rows.map((r) => (
-            <tr key={r.id}>
-              <td>
-                <code>{r.ad}</code>
-                <em className="cell-sub">{r.aciklama}</em>
-              </td>
-              <td>
-                <code>{r.fonksiyon_kod}</code>
-              </td>
-              <td>
-                <span className={r.aktif ? "pill on" : "pill"}>{r.aktif ? "aktif" : "pasif"}</span>
-              </td>
-              <td>
-                <Link to={`/admin/toollar/${r.id}`}>Düzenle</Link>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={4} className={cx(tdCls, muted)}>
+                  Kayıt yok. API açılışında varsayılan tool’lar eklenir.
+                </td>
+              </tr>
+            )}
+            {rows.map((r) => (
+              <tr key={r.id} className={trCls}>
+                <td className={tdCls}>
+                  <code className="font-mono text-xs text-indigo-600 dark:text-indigo-400">{r.ad}</code>
+                  <em className="mt-1 block text-xs not-italic text-zinc-500">{r.aciklama}</em>
+                </td>
+                <td className={tdCls}>
+                  <code className="font-mono text-xs text-indigo-600 dark:text-indigo-400">{r.fonksiyon_kod}</code>
+                </td>
+                <td className={tdCls}>
+                  <span className={r.aktif ? pillOn : pillOff}>{r.aktif ? "aktif" : "pasif"}</span>
+                </td>
+                <td className={tdCls}>
+                  <Link className={linkCls} to={`/admin/toollar/${r.id}`}>
+                    Düzenle
+                  </Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

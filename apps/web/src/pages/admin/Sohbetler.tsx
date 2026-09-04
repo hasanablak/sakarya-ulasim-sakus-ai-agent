@@ -1,6 +1,22 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api";
+import {
+  cx,
+  errText,
+  inputCls,
+  labelCls,
+  linkCls,
+  muted,
+  pageStack,
+  pageSub,
+  pageTitle,
+  tableCls,
+  tableWrap,
+  tdCls,
+  thCls,
+  trCls,
+} from "./ui";
 
 type Row = {
   id: string;
@@ -46,16 +62,19 @@ export function SohbetlerPage() {
   }, [webchatId]);
 
   return (
-    <div>
-      <h1>Gelen kutusu</h1>
-      <p className="muted">
-        Webchat üzerinden gelen sohbetler. Müşteri mesajı, asistan yanıtı, hangi pencere ve agent kullanıldığı burada.
-      </p>
-      {err && <p className="err">{err}</p>}
-      <div className="inbox-toolbar">
-        <label>
+    <div className={pageStack}>
+      <div>
+        <h1 className={pageTitle}>Gelen kutusu</h1>
+        <p className={pageSub}>
+          Webchat üzerinden gelen sohbetler. Müşteri mesajı, asistan yanıtı, hangi pencere ve agent kullanıldığı burada.
+        </p>
+      </div>
+      {err && <p className={errText}>{err}</p>}
+      <div className="max-w-xs">
+        <label className={labelCls}>
           Webchat
           <select
+            className={inputCls}
             value={webchatId === "" ? "" : String(webchatId)}
             onChange={(e) => setWebchatId(e.target.value ? Number(e.target.value) : "")}
           >
@@ -69,47 +88,55 @@ export function SohbetlerPage() {
         </label>
       </div>
       {rows.length === 0 && !err && (
-        <p className="muted">Henüz sohbet yok. Site veya embed üzerinden gelen mesajlar burada listelenir.</p>
+        <p className={muted}>Henüz sohbet yok. Site veya embed üzerinden gelen mesajlar burada listelenir.</p>
       )}
       {rows.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Zaman</th>
-              <th>Webchat</th>
-              <th>Müşteri</th>
-              <th>Asistan</th>
-              <th>Kaynak</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id}>
-                <td className="nowrap">
-                  {fmt(r.updated_at)}
-                  <div className="muted small">
-                    {r.message_count} mesaj
-                    {r.tool_count ? ` · ${r.tool_count} tool` : ""}
-                  </div>
-                </td>
-                <td>
-                  {r.webchat_ad ?? "—"}
-                  <div className="muted small">{r.agent_ad ?? "agent yok"}</div>
-                </td>
-                <td className="inbox-preview">{r.last_user ?? "—"}</td>
-                <td className="inbox-preview">{r.last_assistant ?? "—"}</td>
-                <td className="muted small">
-                  {r.kaynak === "embed" ? "Embed" : "Site"}
-                  {r.host_origin ? <div>{r.host_origin}</div> : null}
-                </td>
-                <td>
-                  <Link to={`/admin/sohbetler/${r.id}`}>Aç</Link>
-                </td>
+        <div className={tableWrap}>
+          <table className={tableCls}>
+            <thead>
+              <tr>
+                <th className={thCls}>Zaman</th>
+                <th className={thCls}>Webchat</th>
+                <th className={thCls}>Müşteri</th>
+                <th className={thCls}>Asistan</th>
+                <th className={thCls}>Kaynak</th>
+                <th className={thCls}></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+              {rows.map((r) => (
+                <tr key={r.id} className={trCls}>
+                  <td className={cx(tdCls, "whitespace-nowrap")}>
+                    {fmt(r.updated_at)}
+                    <div className={cx(muted, "text-xs")}>
+                      {r.message_count} mesaj
+                      {r.tool_count ? ` · ${r.tool_count} tool` : ""}
+                    </div>
+                  </td>
+                  <td className={tdCls}>
+                    {r.webchat_ad ?? "—"}
+                    <div className={cx(muted, "text-xs")}>{r.agent_ad ?? "agent yok"}</div>
+                  </td>
+                  <td className={cx(tdCls, "max-w-[260px]")}>
+                    <span className="line-clamp-2">{r.last_user ?? "—"}</span>
+                  </td>
+                  <td className={cx(tdCls, "max-w-[260px]")}>
+                    <span className="line-clamp-2">{r.last_assistant ?? "—"}</span>
+                  </td>
+                  <td className={cx(tdCls, muted, "text-xs")}>
+                    {r.kaynak === "embed" ? "Embed" : "Site"}
+                    {r.host_origin ? <div>{r.host_origin}</div> : null}
+                  </td>
+                  <td className={tdCls}>
+                    <Link className={linkCls} to={`/admin/sohbetler/${r.id}`}>
+                      Aç
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

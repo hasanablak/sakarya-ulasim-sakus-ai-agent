@@ -5,6 +5,24 @@ import { api } from "../../api";
 import { HatMap, type FocusStop } from "./HatMap";
 import { HatSaatleri, type Sefer } from "./HatSaatleri";
 import { sakusHatHaritaUrl } from "@sakus/shared";
+import {
+  btnDanger,
+  btnPrimary,
+  btnSecondary,
+  cardCls,
+  cx,
+  linkCls,
+  muted,
+  pageHead,
+  pageStack,
+  pageSub,
+  pageTitle,
+  tableCls,
+  tableWrap,
+  tdCls,
+  thCls,
+  trCls,
+} from "./ui";
 
 type Vehicle = {
   bus_number: number;
@@ -70,27 +88,30 @@ export function HatDetayPage() {
     };
   }, [slug]);
 
-  if (!data?.hat) return <p>{msg ?? "Yükleniyor…"}</p>;
+  if (!data?.hat) return <p className="text-zinc-500">{msg ?? "Yükleniyor…"}</p>;
   const hat = data.hat;
 
   return (
-    <div>
+    <div className={pageStack}>
       <p>
-        <Link to="/admin">← Hatlar</Link>
+        <Link className={linkCls} to="/admin">
+          ← Hatlar
+        </Link>
       </p>
-      <header className="page-head">
+      <header className={pageHead}>
         <div>
-          <h1>
+          <h1 className={pageTitle}>
             {hat.kod} — {hat.ad}
           </h1>
-          <p className="muted">{hat.slug}</p>
+          <p className={pageSub}>{hat.slug}</p>
         </div>
-        <div className="row">
-          <a className="ghost" href={sakusHatHaritaUrl(hat.slug)} target="_blank" rel="noreferrer">
+        <div className="flex flex-wrap items-center gap-2">
+          <a className={btnSecondary} href={sakusHatHaritaUrl(hat.slug)} target="_blank" rel="noreferrer">
             SAKUS’ta göster
           </a>
           <button
             type="button"
+            className={btnPrimary}
             onClick={async () => {
               setMsg(null);
               try {
@@ -105,7 +126,7 @@ export function HatDetayPage() {
           </button>
           <button
             type="button"
-            className={liveOn ? "danger" : ""}
+            className={liveOn ? btnDanger : btnPrimary}
             onClick={async () => {
               setMsg(null);
               try {
@@ -127,9 +148,11 @@ export function HatDetayPage() {
           </button>
         </div>
       </header>
-      {msg && <p className="banner">{msg}</p>}
+      {msg && (
+        <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-500">{msg}</p>
+      )}
 
-      <h2>Güzergah haritası</h2>
+      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Güzergah haritası</h2>
       <HatMap
         key={hat.slug}
         routes={data.routes ?? []}
@@ -139,60 +162,63 @@ export function HatDetayPage() {
         focusStop={focusStop}
       />
 
-      <h2>Hareket saatleri</h2>
+      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Hareket saatleri</h2>
       <HatSaatleri slug={hat.slug} seferler={data.seferler ?? []} />
 
-      <h2>Anlık otobüsler</h2>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Araç</th>
-            <th>Durum</th>
-            <th>Konum</th>
-            <th>Güncelleme</th>
-          </tr>
-        </thead>
-        <tbody>
-          {vehicles.length === 0 && (
+      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Anlık otobüsler</h2>
+      <div className={tableWrap}>
+        <table className={tableCls}>
+          <thead>
             <tr>
-              <td colSpan={4} className="muted">
-                Kayıt yok. Canlı takibi aç.
-              </td>
+              <th className={thCls}>Araç</th>
+              <th className={thCls}>Durum</th>
+              <th className={thCls}>Konum</th>
+              <th className={thCls}>Güncelleme</th>
             </tr>
-          )}
-          {vehicles.map((v) => (
-            <tr key={v.bus_number}>
-              <td>
-                {v.bus_number}
-                {v.plate ? ` · ${v.plate}` : ""}
-              </td>
-              <td>
-                {v.status} {v.next_stop_name ? `→ ${v.next_stop_name}` : ""}
-                <div className="muted">{v.route_name}</div>
-              </td>
-              <td className="muted">
-                {Number(v.lat).toFixed(5)}, {Number(v.lng).toFixed(5)}
-              </td>
-              <td className="muted">{new Date(v.updated_at).toLocaleTimeString("tr-TR")}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+            {vehicles.length === 0 && (
+              <tr>
+                <td colSpan={4} className={cx(tdCls, muted)}>
+                  Kayıt yok. Canlı takibi aç.
+                </td>
+              </tr>
+            )}
+            {vehicles.map((v) => (
+              <tr key={v.bus_number} className={trCls}>
+                <td className={tdCls}>
+                  {v.bus_number}
+                  {v.plate ? ` · ${v.plate}` : ""}
+                </td>
+                <td className={tdCls}>
+                  {v.status} {v.next_stop_name ? `→ ${v.next_stop_name}` : ""}
+                  <div className={muted}>{v.route_name}</div>
+                </td>
+                <td className={cx(tdCls, muted)}>
+                  {Number(v.lat).toFixed(5)}, {Number(v.lng).toFixed(5)}
+                </td>
+                <td className={cx(tdCls, muted)}>{new Date(v.updated_at).toLocaleTimeString("tr-TR")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-      <h2>Güzergah durakları</h2>
+      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Güzergah durakları</h2>
       {(data.routes ?? []).map((r) => (
-        <section key={r.sakus_route_id} className="route-block">
-          <h3>{r.yon_ad}</h3>
-          <ol className="stops">
+        <section key={r.sakus_route_id} className={cardCls}>
+          <h3 className="mb-3 text-base font-semibold text-zinc-900 dark:text-zinc-50">{r.yon_ad}</h3>
+          <ol className="list-decimal space-y-1 pl-5">
             {(data.stops ?? [])
               .filter((s) => s.sakus_route_id === r.sakus_route_id)
               .map((s) => (
                 <li
                   key={`${r.sakus_route_id}-${s.id}`}
+                  className="-ml-1.5 cursor-pointer rounded-lg px-1.5 py-1 hover:bg-zinc-50 dark:hover:bg-zinc-800"
                   onClick={() => setFocusStop({ lat: Number(s.lat), lng: Number(s.lng), ad: s.ad })}
                 >
-                  <span>{s.ad}</span>
-                  <em>
+                  <span className="text-zinc-900 dark:text-zinc-50">{s.ad}</span>
+                  <em className="block text-sm not-italic text-zinc-500">
                     {Number(s.lat).toFixed(5)}, {Number(s.lng).toFixed(5)}
                   </em>
                 </li>

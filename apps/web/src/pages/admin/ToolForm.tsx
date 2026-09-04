@@ -1,6 +1,21 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api";
+import {
+  btnDanger,
+  btnPrimary,
+  cardCls,
+  checkInput,
+  checkRow,
+  cx,
+  errText,
+  inputCls,
+  labelCls,
+  linkCls,
+  muted,
+  pageHead,
+  pageTitle,
+} from "./ui";
 
 type FnArg = { name: string; type: string; required: boolean; aciklama: string };
 type Fonksiyon = { kod: string; ad: string; aciklama: string; args: FnArg[] };
@@ -118,29 +133,32 @@ export function ToolFormPage() {
   }
 
   return (
-    <div className="form-page">
-      <header className="page-head">
+    <div className="mx-auto flex max-w-3xl flex-col gap-6">
+      <header className={pageHead}>
         <div>
-          <p className="kicker">
-            <Link to="/admin/toollar">Tool'lar</Link>
+          <p className="text-xs uppercase tracking-wide text-zinc-500">
+            <Link className={linkCls} to="/admin/toollar">
+              Tool'lar
+            </Link>
           </p>
-          <h1>{editing ? "Tool düzenle" : "Yeni tool"}</h1>
+          <h1 className={pageTitle}>{editing ? "Tool düzenle" : "Yeni tool"}</h1>
         </div>
       </header>
-      {err && <p className="err">{err}</p>}
-      {msg && <p className="note">{msg}</p>}
-      <form className="card form-stack" onSubmit={onSubmit}>
-        <label>
+      {err && <p className={errText}>{err}</p>}
+      {msg && <p className="text-sm text-emerald-500">{msg}</p>}
+      <form className={cx(cardCls, "flex flex-col gap-4")} onSubmit={onSubmit}>
+        <label className={labelCls}>
           Ad (snake_case)
-          <input value={ad} onChange={(e) => setAd(e.target.value)} required placeholder="otobus_saat_sorgula" />
+          <input className={inputCls} value={ad} onChange={(e) => setAd(e.target.value)} required placeholder="otobus_saat_sorgula" />
         </label>
-        <label>
+        <label className={labelCls}>
           Açıklama
-          <textarea rows={3} value={aciklama} onChange={(e) => setAciklama(e.target.value)} required />
+          <textarea className={inputCls} rows={3} value={aciklama} onChange={(e) => setAciklama(e.target.value)} required />
         </label>
-        <label>
+        <label className={labelCls}>
           Fonksiyon
           <select
+            className={inputCls}
             value={fonksiyonKod}
             onChange={(e) => {
               const kod = e.target.value;
@@ -162,7 +180,7 @@ export function ToolFormPage() {
           </select>
         </label>
         {secili && (
-          <p className="muted">
+          <p className={muted}>
             {secili.aciklama}
             {secili.args.length > 0 && (
               <>
@@ -172,31 +190,35 @@ export function ToolFormPage() {
             )}
           </p>
         )}
-        <label className="check-row">
-          <input type="checkbox" checked={aktif} onChange={(e) => setAktif(e.target.checked)} />
+        <label className={checkRow}>
+          <input className={checkInput} type="checkbox" checked={aktif} onChange={(e) => setAktif(e.target.checked)} />
           Aktif
         </label>
-        <div className="row">
-          <button type="submit">Kaydet</button>
+        <div className="flex items-center gap-2">
+          <button type="submit" className={btnPrimary}>
+            Kaydet
+          </button>
           {editing && (
-            <button type="button" className="danger" onClick={onSil}>
+            <button type="button" className={btnDanger} onClick={onSil}>
               Sil
             </button>
           )}
         </div>
       </form>
 
-      <section className="card form-stack" style={{ marginTop: 16 }}>
-        <h2>Fonksiyonu dene</h2>
-        <p className="muted">LLM’e gitmez; doğrudan veritabanından çalışır.</p>
-        <label>
+      <section className={cx(cardCls, "flex flex-col gap-4")}>
+        <h2 className="m-0 text-lg font-semibold text-zinc-900 dark:text-zinc-50">Fonksiyonu dene</h2>
+        <p className={muted}>LLM’e gitmez; doğrudan veritabanından çalışır.</p>
+        <label className={labelCls}>
           Argümanlar (JSON)
-          <textarea rows={8} value={argsText} onChange={(e) => setArgsText(e.target.value)} />
+          <textarea className={cx(inputCls, "font-mono text-sm")} rows={8} value={argsText} onChange={(e) => setArgsText(e.target.value)} />
         </label>
-        <button type="button" onClick={() => void dene()} disabled={!fonksiyonKod}>
+        <button type="button" className={btnPrimary} onClick={() => void dene()} disabled={!fonksiyonKod}>
           Çalıştır
         </button>
-        {sonuc && <pre className="json-out">{sonuc}</pre>}
+        {sonuc && (
+          <pre className="max-h-[360px] overflow-auto rounded-xl bg-zinc-950 p-3.5 font-mono text-xs text-zinc-50">{sonuc}</pre>
+        )}
       </section>
     </div>
   );

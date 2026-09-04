@@ -1,3 +1,5 @@
+import { cardCls, cx, muted, trendDown, trendUp, trendWarn } from "./ui";
+
 type Job = {
   id: number;
   status: string;
@@ -67,6 +69,19 @@ function elapsed(iso: string | null): string | null {
   return m > 0 ? `${m} dk ${r} sn` : `${r} sn`;
 }
 
+function chipCls(status: string): string {
+  if (status === "success") return trendUp;
+  if (status === "error") return trendDown;
+  if (status === "queued") return trendWarn;
+  return "rounded-full px-2 py-0.5 text-xs font-medium bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400";
+}
+
+function barCls(status: string): string {
+  if (status === "error") return "bg-red-500";
+  if (status === "success") return "bg-emerald-500";
+  return "bg-indigo-600";
+}
+
 export function IngestBanner({ job }: { job: Job }) {
   const ev = parseProgress(job.progress_json);
   const current = ev?.current ?? 0;
@@ -87,26 +102,24 @@ export function IngestBanner({ job }: { job: Job }) {
   else if (!running && total) summary = `${current} / ${total} hat işlendi`;
 
   return (
-    <aside className={`job-banner is-${job.status}`}>
-      <div className="job-banner-top">
-        <span className={`job-chip ${running ? "pulse" : ""}`}>{statusLabel(job.status)}</span>
-        <strong>İş #{job.id}</strong>
-        {running && elapsed(job.started_at) && (
-          <span className="muted">{elapsed(job.started_at)}</span>
-        )}
+    <aside className={cardCls}>
+      <div className="flex flex-wrap items-center gap-2.5">
+        <span className={cx(chipCls(job.status), running && "animate-pulse")}>{statusLabel(job.status)}</span>
+        <strong className="text-zinc-900 dark:text-zinc-50">İş #{job.id}</strong>
+        {running && elapsed(job.started_at) && <span className={muted}>{elapsed(job.started_at)}</span>}
         {total > 0 && (
-          <span className="job-pct">
+          <span className="ml-auto text-sm text-zinc-500">
             {current} / {total} · %{pct}
           </span>
         )}
       </div>
-      <div className="job-banner-bar" aria-hidden>
-        <i style={{ width: `${running && pct === 0 ? 8 : pct}%` }} />
+      <div className="my-3 h-2 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800" aria-hidden>
+        <i className={cx("block h-full rounded-full transition-all", barCls(job.status))} style={{ width: `${running && pct === 0 ? 8 : pct}%` }} />
       </div>
-      {running && nowLine && <p className="job-now">Şu an: {nowLine}</p>}
-      {!running && summary && <p className="job-now">{summary}</p>}
-      {running && !nowLine && summary && <p className="job-now">{summary}</p>}
-      {err && <p className="job-err">{err}</p>}
+      {running && nowLine && <p className="m-0 text-sm text-zinc-900 dark:text-zinc-50">Şu an: {nowLine}</p>}
+      {!running && summary && <p className="m-0 text-sm text-zinc-900 dark:text-zinc-50">{summary}</p>}
+      {running && !nowLine && summary && <p className="m-0 text-sm text-zinc-900 dark:text-zinc-50">{summary}</p>}
+      {err && <p className="mt-1 text-sm text-red-500">{err}</p>}
     </aside>
   );
 }

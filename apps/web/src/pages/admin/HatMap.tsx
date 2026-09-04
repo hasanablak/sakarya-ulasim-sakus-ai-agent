@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { btnPrimary, btnSecondary, cardShell, cx } from "./ui";
 
 export type HatMapRoute = {
   sakus_route_id: number;
@@ -237,25 +238,29 @@ export function HatMap({
   const empty = routes.length === 0 && stops.length === 0;
 
   return (
-    <section className="hat-map-card">
-      <div className="hat-map-toolbar">
-        <button type="button" className={active === "all" ? "active" : ""} onClick={() => setActive("all")}>
+    <section className={cx(cardShell, "relative overflow-hidden")}>
+      <div className="flex flex-wrap gap-2 border-b border-zinc-200 p-3 dark:border-zinc-800">
+        <button type="button" className={active === "all" ? btnPrimary : btnSecondary} onClick={() => setActive("all")}>
           Tüm yönler
         </button>
         {routes.map((r, i) => (
           <button
             key={r.sakus_route_id}
             type="button"
-            className={active === r.sakus_route_id ? "active" : ""}
+            className={cx(active === r.sakus_route_id ? btnPrimary : btnSecondary, "max-w-full")}
             onClick={() => setActive(r.sakus_route_id)}
           >
-            <i className="hat-swatch" style={{ background: routeColor(i, hatColor) }} />
+            <i className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: routeColor(i, hatColor) }} />
             {r.yon_ad}
           </button>
         ))}
       </div>
-      <div className="hat-map" ref={wrapRef} />
-      {empty && <p className="hat-map-empty">Bu hat için güzergah veya durak geometrisi yok.</p>}
+      <div className="hat-map h-[min(520px,62vh)] w-full" ref={wrapRef} />
+      {empty && (
+        <p className="absolute bottom-4 left-4 z-[500] m-0 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50">
+          Bu hat için güzergah veya durak geometrisi yok.
+        </p>
+      )}
     </section>
   );
 }

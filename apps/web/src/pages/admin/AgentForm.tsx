@@ -2,13 +2,28 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { LLM_SAGLAYICILAR } from "@sakus/shared";
 import { api } from "../../api";
+import {
+  btnDanger,
+  btnPrimary,
+  cardCls,
+  checkInput,
+  checkRow,
+  cx,
+  errText,
+  inputCls,
+  labelCls,
+  linkCls,
+  muted,
+  pageHead,
+  pageTitle,
+} from "./ui";
 
 const MODEL_VARSAYILAN: Record<string, string> = {
   openai: "gpt-4o-mini",
   anthropic: "claude-sonnet-4-5",
   google: "gemini-2.5-flash",
   groq: "llama-3.3-70b-versatile",
-  wiro: "google/gemini-3-7-flash",
+  openrouter: "openai/gpt-4o-mini",
 };
 
 const TOKEN_PLACEHOLDER: Record<string, string> = {
@@ -16,11 +31,11 @@ const TOKEN_PLACEHOLDER: Record<string, string> = {
   anthropic: "sk-ant-…",
   google: "AIza…",
   groq: "gsk_…",
-  wiro: "Wiro API key (secret .env: WIRO_API_SECRET)",
+  openrouter: "sk-or-v1-…",
 };
 
 const PROMPT_ORNEK =
-  "Sen Sakarya Büyükşehir Belediyesi SAKUS asistanısın. Yolcuya hat, durak, sefer saati ve anlık otobüs konumu konusunda yardımcı olursun. Tool sonuçlarını kısa Türkçe cümlelerle özetle; ham JSON okuma. Konumun yoksa nazikçe iste.";
+  "Sen Sakarya Büyükşehir Belediyesi SAKUS asistanısın. Yolcuya hat, durak, sefer saati ve anlık otobüs konumu konusunda yardımcı olursun. Tool sonuçlarını kısa Türkçe cümlelerle özetle; ham JSON okuma. Konumun yoksa nazikçe iste. Sakarya’da “Çarşı” Adapazarı merkez demektir.";
 
 type ToolOpt = { id: number; ad: string; aciklama: string; aktif: number | boolean };
 
@@ -72,8 +87,8 @@ export function AgentFormPage() {
     e.preventDefault();
     setErr(null);
     setMsg(null);
-    if (saglayici === "cursor") {
-      setErr("Cursor / Composer kaldırıldı. OpenAI, Claude, Gemini, Groq veya Wiro seç.");
+    if (saglayici === "cursor" || saglayici === "wiro") {
+      setErr("Bu sağlayıcı kaldırıldı. OpenAI, Claude, Gemini, Groq veya OpenRouter seç.");
       return;
     }
     try {
@@ -111,34 +126,37 @@ export function AgentFormPage() {
   }
 
   return (
-    <div className="form-page">
-      <header className="page-head">
+    <div className="mx-auto flex max-w-3xl flex-col gap-6">
+      <header className={pageHead}>
         <div>
-          <p className="kicker">
-            <Link to="/admin/agentler">Agent'lar</Link>
+          <p className="text-xs uppercase tracking-wide text-zinc-500">
+            <Link className={linkCls} to="/admin/agentler">
+              Agent'lar
+            </Link>
           </p>
-          <h1>{editing ? "Agent düzenle" : "Yeni agent"}</h1>
+          <h1 className={pageTitle}>{editing ? "Agent düzenle" : "Yeni agent"}</h1>
         </div>
       </header>
-      {err && <p className="err">{err}</p>}
-      {msg && <p className="note">{msg}</p>}
-      <form className="card form-stack" onSubmit={onSubmit}>
-        <label>
+      {err && <p className={errText}>{err}</p>}
+      {msg && <p className="text-sm text-emerald-500">{msg}</p>}
+      <form className={cx(cardCls, "flex flex-col gap-4")} onSubmit={onSubmit}>
+        <label className={labelCls}>
           Ad
-          <input value={ad} onChange={(e) => setAd(e.target.value)} required placeholder="SAKUS yolcu asistanı" />
+          <input className={inputCls} value={ad} onChange={(e) => setAd(e.target.value)} required placeholder="SAKUS yolcu asistanı" />
         </label>
-        <label>
+        <label className={labelCls}>
           Açıklama
-          <input value={aciklama} onChange={(e) => setAciklama(e.target.value)} placeholder="Kısa not, admin için" />
+          <input className={inputCls} value={aciklama} onChange={(e) => setAciklama(e.target.value)} placeholder="Kısa not, admin için" />
         </label>
-        <div className="form-grid">
-          <label>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className={labelCls}>
             LLM
             <select
+              className={inputCls}
               value={saglayici}
               onChange={(e) => {
                 const next = e.target.value;
-                if (model === MODEL_VARSAYILAN[saglayici] || saglayici === "cursor") {
+                if (model === MODEL_VARSAYILAN[saglayici] || saglayici === "cursor" || saglayici === "wiro") {
                   setModel(MODEL_VARSAYILAN[next] ?? model);
                 }
                 setSaglayici(next);
@@ -149,6 +167,11 @@ export function AgentFormPage() {
                   Cursor / Composer (kaldırıldı)
                 </option>
               )}
+              {saglayici === "wiro" && (
+                <option value="wiro" disabled>
+                  Wiro (kaldırıldı)
+                </option>
+              )}
               {LLM_SAGLAYICILAR.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.ad}
@@ -156,14 +179,15 @@ export function AgentFormPage() {
               ))}
             </select>
           </label>
-          <label>
+          <label className={labelCls}>
             Model
-            <input value={model} onChange={(e) => setModel(e.target.value)} required />
+            <input className={inputCls} value={model} onChange={(e) => setModel(e.target.value)} required />
           </label>
         </div>
-        <label>
+        <label className={labelCls}>
           API token
           <input
+            className={inputCls}
             type="password"
             autoComplete="off"
             value={token}
@@ -174,28 +198,30 @@ export function AgentFormPage() {
                 : (TOKEN_PLACEHOLDER[saglayici] ?? "API anahtarı")
             }
           />
-          {saglayici === "wiro" && (
-            <span className="field-hint">
-              Wiro imzalı Run API: model `google/gemini-3-7-flash`. API secret tarayıcıya konmaz; kök `.env` dosyasında
-              `WIRO_API_SECRET`. Token boşsa `WIRO_API_KEY` kullanılır. OpenAI uyumlu uç yok.
+          {saglayici === "openrouter" && (
+            <span className="text-xs leading-snug text-zinc-500">
+              OpenRouter OpenAI uyumlu uç. Model id `sağlayıcı/model` (ör. `openai/gpt-4o-mini`,
+              `google/gemini-2.5-flash`). Anahtar: openrouter.ai/keys (`sk-or-v1-…`).
             </span>
           )}
-          {saglayici === "cursor" && (
-            <span className="field-hint err">
-              Cursor / Composer kaldırıldı. OpenAI, Claude, Gemini, Groq veya Wiro seçip kaydet.
+          {(saglayici === "cursor" || saglayici === "wiro") && (
+            <span className="text-xs leading-snug text-red-500">
+              {saglayici === "wiro" ? "Wiro" : "Cursor / Composer"} kaldırıldı. OpenAI, Claude, Gemini, Groq veya
+              OpenRouter seçip kaydet.
             </span>
           )}
         </label>
-        <label>
+        <label className={labelCls}>
           Sistem prompt
-          <textarea rows={10} value={sistemPrompt} onChange={(e) => setSistemPrompt(e.target.value)} required />
+          <textarea className={inputCls} rows={10} value={sistemPrompt} onChange={(e) => setSistemPrompt(e.target.value)} required />
         </label>
-        <fieldset className="tool-picks">
-          <legend>Kullanabileceği tool’lar</legend>
-          {toollar.length === 0 && <p className="muted">Önce Tool’lar menüsünden tool ekle.</p>}
+        <fieldset className="rounded-xl border border-zinc-200 px-4 py-3 dark:border-zinc-800">
+          <legend className="px-1.5 text-sm text-zinc-500">Kullanabileceği tool’lar</legend>
+          {toollar.length === 0 && <p className={muted}>Önce Tool’lar menüsünden tool ekle.</p>}
           {toollar.map((t) => (
-            <label key={t.id} className="check-row">
+            <label key={t.id} className={cx(checkRow, "py-1")}>
               <input
+                className={checkInput}
                 type="checkbox"
                 checked={toolIds.includes(t.id)}
                 onChange={(e) => {
@@ -203,20 +229,22 @@ export function AgentFormPage() {
                 }}
               />
               <span>
-                <code>{t.ad}</code>
-                <em>{t.aciklama}</em>
+                <code className="font-mono text-xs text-indigo-600 dark:text-indigo-400">{t.ad}</code>
+                <em className="block text-xs not-italic text-zinc-500">{t.aciklama}</em>
               </span>
             </label>
           ))}
         </fieldset>
-        <label className="check-row">
-          <input type="checkbox" checked={aktif} onChange={(e) => setAktif(e.target.checked)} />
+        <label className={checkRow}>
+          <input className={checkInput} type="checkbox" checked={aktif} onChange={(e) => setAktif(e.target.checked)} />
           Aktif
         </label>
-        <div className="row">
-          <button type="submit">Kaydet</button>
+        <div className="flex items-center gap-2">
+          <button type="submit" className={btnPrimary}>
+            Kaydet
+          </button>
           {editing && (
-            <button type="button" className="danger" onClick={onSil}>
+            <button type="button" className={btnDanger} onClick={onSil}>
               Sil
             </button>
           )}

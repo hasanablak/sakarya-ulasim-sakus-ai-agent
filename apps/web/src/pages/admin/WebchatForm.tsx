@@ -3,7 +3,23 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { DEFAULT_WEBCHAT_TEMA, mergeWebchatTema, type WebchatKonum, type WebchatPublic, type WebchatTema } from "@sakus/shared";
 import { api } from "../../api";
 import { ChatShell } from "../../components/ChatShell";
+import { ORNEK_CUMLELER } from "../../components/ChatWidget";
 import { EmbedSnippet } from "../../components/EmbedSnippet";
+import {
+  btnDanger,
+  btnPrimary,
+  cardCls,
+  checkInput,
+  checkRow,
+  cx,
+  errText,
+  inputCls,
+  labelCls,
+  linkCls,
+  muted,
+  pageHead,
+  pageTitle,
+} from "./ui";
 
 type AgentOpt = { id: number; ad: string; aktif: boolean };
 
@@ -134,31 +150,33 @@ export function WebchatFormPage() {
   }
 
   return (
-    <div>
-      <header className="page-head">
+    <div className="flex flex-col gap-6">
+      <header className={pageHead}>
         <div>
-          <p className="kicker">
-            <Link to="/admin/webchatler">Webchat'ler</Link>
+          <p className="text-xs uppercase tracking-wide text-zinc-500">
+            <Link className={linkCls} to="/admin/webchatler">
+              Webchat'ler
+            </Link>
           </p>
-          <h1>{editing ? "Webchat düzenle" : "Yeni webchat"}</h1>
+          <h1 className={pageTitle}>{editing ? "Webchat düzenle" : "Yeni webchat"}</h1>
         </div>
       </header>
-      {err && <p className="err">{err}</p>}
-      {msg && <p className="note">{msg}</p>}
-      <div className="webchat-editor">
-        <div>
-        <form className="card form-stack" onSubmit={onSubmit}>
-          <label>
+      {err && <p className={errText}>{err}</p>}
+      {msg && <p className="text-sm text-emerald-500">{msg}</p>}
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]">
+        <div className="flex flex-col gap-6">
+        <form className={cx(cardCls, "flex flex-col gap-4")} onSubmit={onSubmit}>
+          <label className={labelCls}>
             Ad
-            <input value={ad} onChange={(e) => setAd(e.target.value)} required />
+            <input className={inputCls} value={ad} onChange={(e) => setAd(e.target.value)} required />
           </label>
-          <label>
+          <label className={labelCls}>
             Slug
-            <input value={slug} onChange={(e) => setSlug(e.target.value)} required placeholder="public" />
+            <input className={inputCls} value={slug} onChange={(e) => setSlug(e.target.value)} required placeholder="public" />
           </label>
-          <label>
+          <label className={labelCls}>
             Agent
-            <select value={agentId} onChange={(e) => setAgentId(e.target.value ? Number(e.target.value) : "")}>
+            <select className={inputCls} value={agentId} onChange={(e) => setAgentId(e.target.value ? Number(e.target.value) : "")}>
               <option value="">Agent seçilmedi</option>
               {agentler.map((a) => (
                 <option key={a.id} value={a.id}>
@@ -168,39 +186,40 @@ export function WebchatFormPage() {
               ))}
             </select>
           </label>
-          <p className="muted">Sohbet döngüsü bağlanınca bu agent’ın prompt’u, LLM’i ve tool’ları kullanılacak.</p>
-          <label>
+          <p className={muted}>Sohbet döngüsü bağlanınca bu agent’ın prompt’u, LLM’i ve tool’ları kullanılacak.</p>
+          <label className={labelCls}>
             Pencere başlığı
-            <input value={baslik} onChange={(e) => setBaslik(e.target.value)} required />
+            <input className={inputCls} value={baslik} onChange={(e) => setBaslik(e.target.value)} required />
           </label>
-          <label>
+          <label className={labelCls}>
             Karşılama
-            <textarea rows={3} value={karsilama} onChange={(e) => setKarsilama(e.target.value)} />
+            <textarea className={inputCls} rows={3} value={karsilama} onChange={(e) => setKarsilama(e.target.value)} />
           </label>
-          <div className="form-grid">
-            <label>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className={labelCls}>
               Placeholder
-              <input value={placeholder} onChange={(e) => setPlaceholder(e.target.value)} />
+              <input className={inputCls} value={placeholder} onChange={(e) => setPlaceholder(e.target.value)} />
             </label>
-            <label>
+            <label className={labelCls}>
               Konum
-              <select value={konum} onChange={(e) => setKonum(e.target.value as WebchatKonum)}>
+              <select className={inputCls} value={konum} onChange={(e) => setKonum(e.target.value as WebchatKonum)}>
                 <option value="sag_alt">Sağ alt</option>
                 <option value="sol_alt">Sol alt</option>
               </select>
             </label>
-            <label>
+            <label className={labelCls}>
               Açık buton
-              <input value={fabAc} onChange={(e) => setFabAc(e.target.value)} />
+              <input className={inputCls} value={fabAc} onChange={(e) => setFabAc(e.target.value)} />
             </label>
-            <label>
+            <label className={labelCls}>
               Kapalı buton
-              <input value={fabKapat} onChange={(e) => setFabKapat(e.target.value)} />
+              <input className={inputCls} value={fabKapat} onChange={(e) => setFabKapat(e.target.value)} />
             </label>
           </div>
-          <label>
+          <label className={labelCls}>
             Panel genişliği ({tema.panel_width}px)
             <input
+              className="w-full accent-indigo-600"
               type="range"
               min={280}
               max={480}
@@ -208,19 +227,21 @@ export function WebchatFormPage() {
               onChange={(e) => setTema((t) => ({ ...t, panel_width: Number(e.target.value) }))}
             />
           </label>
-          <fieldset className="tool-picks">
-            <legend>Renkler</legend>
-            <div className="color-grid">
+          <fieldset className="rounded-xl border border-zinc-200 px-4 py-3 dark:border-zinc-800">
+            <legend className="px-1.5 text-sm text-zinc-500">Renkler</legend>
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
               {COLOR_FIELDS.map((f) => (
-                <label key={f.key} className="color-field">
+                <label key={f.key} className={labelCls}>
                   {f.label}
-                  <span>
+                  <span className="flex items-center gap-2">
                     <input
+                      className="h-8 w-10 shrink-0 cursor-pointer rounded-lg border border-zinc-200 p-0.5 dark:border-zinc-800"
                       type="color"
                       value={/^#[0-9a-fA-F]{6}$/.test(tema[f.key]) ? tema[f.key] : "#000000"}
                       onChange={(e) => setTema((t) => ({ ...t, [f.key]: e.target.value }))}
                     />
                     <input
+                      className={inputCls}
                       value={tema[f.key]}
                       onChange={(e) => {
                         const v = e.target.value;
@@ -233,39 +254,48 @@ export function WebchatFormPage() {
               ))}
             </div>
           </fieldset>
-          <label className="check-row">
-            <input type="checkbox" checked={aktif} onChange={(e) => setAktif(e.target.checked)} />
+          <label className={checkRow}>
+            <input className={checkInput} type="checkbox" checked={aktif} onChange={(e) => setAktif(e.target.checked)} />
             Aktif
           </label>
-          <label className="check-row">
-            <input type="checkbox" checked={varsayilan} onChange={(e) => setVarsayilan(e.target.checked)} />
+          <label className={checkRow}>
+            <input className={checkInput} type="checkbox" checked={varsayilan} onChange={(e) => setVarsayilan(e.target.checked)} />
             Ana sitede göster (varsayılan)
           </label>
-          <div className="row">
-            <button type="submit">Kaydet</button>
+          <div className="flex items-center gap-2">
+            <button type="submit" className={btnPrimary}>
+              Kaydet
+            </button>
             {editing && (
-              <button type="button" className="danger" onClick={onSil}>
+              <button type="button" className={btnDanger} onClick={onSil}>
                 Sil
               </button>
             )}
           </div>
         </form>
-        <div style={{ marginTop: 16 }}>
-          <EmbedSnippet embedKey={embedKey} />
+        <EmbedSnippet embedKey={embedKey} />
         </div>
-        </div>
-        <div className="webchat-stage">
-          <p className="webchat-stage-label">Önizleme</p>
+        <div className="relative sticky top-20 h-[560px] overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-800">
+          <p className="absolute left-3.5 top-3 z-2 m-0 text-xs uppercase tracking-wide text-zinc-500">Önizleme</p>
           <ChatShell
             cfg={live}
             open={previewOpen}
             onToggle={() => setPreviewOpen((v) => !v)}
             preview
             composer={
-              <form onSubmit={(e) => e.preventDefault()}>
-                <input placeholder={placeholder} readOnly />
-                <button type="button">Gönder</button>
-              </form>
+              <div className="chat-composer">
+                <div className="chat-suggest">
+                  {ORNEK_CUMLELER.map((cumle) => (
+                    <button key={cumle} type="button">
+                      {cumle}
+                    </button>
+                  ))}
+                </div>
+                <form onSubmit={(e) => e.preventDefault()}>
+                  <input placeholder={placeholder} readOnly />
+                  <button type="button">Gönder</button>
+                </form>
+              </div>
             }
           >
             <p className="hint">{karsilama}</p>

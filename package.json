@@ -11,7 +11,9 @@
     "live": "npm run live -w @sakus/scraper --"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "@tailwindcss/vite": "^4.3.3",
+    "concurrently": "^9.2.1",
+    "tailwindcss": "^4.3.3"
   },
   "engines": {
     "node": ">=20"

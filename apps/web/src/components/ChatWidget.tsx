@@ -4,6 +4,19 @@ import { api, getSessionId, setSessionId, type ChatMessage } from "../api";
 import { ChatMd } from "./ChatMd";
 import { ChatShell } from "./ChatShell";
 
+export const ORNEK_CUMLELER = [
+  "Şu an bana en yakın hatlar neler?",
+  "Çarşıya nasıl giderim?",
+  "5 numaranın saatleri nelerdir?",
+  "20 numara şu anda tam olarak nerede?",
+];
+
+const ORNEK_SOR_OLAY = "sakus-ornek-sor";
+
+export function ornekSor(text: string) {
+  window.dispatchEvent(new CustomEvent(ORNEK_SOR_OLAY, { detail: text }));
+}
+
 const FALLBACK: WebchatPublic = {
   id: 0,
   embed_key: "",
@@ -31,6 +44,7 @@ export function ChatWidget({ slug, embed, host }: { slug?: string; embed?: boole
   const [error, setError] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLDivElement>(null);
+  const sendRef = useRef<(raw: string) => Promise<void>>(async () => undefined);
 
   useEffect(() => {
     api
@@ -77,11 +91,17 @@ export function ChatWidget({ slug, embed, host }: { slug?: string; embed?: boole
     return () => ro.disconnect();
   }, [embed, cfg, open, messages]);
 
-  async function send(e: FormEvent) {
-    e.preventDefault();
+  async function sendMessage(raw: string) {
     if (!cfg) return;
-    const message = text.trim();
+    const message = raw.trim();
     if (!message || busy) return;
+    const yerel: ChatMessage = {
+      id: -Date.now(),
+      rol: "user",
+      icerik: message,
+      created_at: new Date().toISOString(),
+    };
+    setMessages((cur) => [...cur, yerel]);
     setBusy(true);
     setError(null);
     setText("");
@@ -105,6 +125,24 @@ export function ChatWidget({ slug, embed, host }: { slug?: string; embed?: boole
     }
   }
 
+  sendRef.current = sendMessage;
+
+  useEffect(() => {
+    function onOrnek(ev: Event) {
+      const msg = String((ev as CustomEvent<string>).detail ?? "").trim();
+      if (!msg) return;
+      setOpen(true);
+      void sendRef.current(msg);
+    }
+    window.addEventListener(ORNEK_SOR_OLAY, onOrnek);
+    return () => window.removeEventListener(ORNEK_SOR_OLAY, onOrnek);
+  }, []);
+
+  function send(e: FormEvent) {
+    e.preventDefault();
+    void sendMessage(text);
+  }
+
   if (!cfg) return null;
 
   return (
@@ -116,25 +154,44 @@ export function ChatWidget({ slug, embed, host }: { slug?: string; embed?: boole
       dockRef={dockRef}
       embed={embed}
       composer={
-        <form onSubmit={send}>
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={cfg.placeholder}
-            disabled={busy}
-          />
-          <button type="submit" disabled={busy}>
-            {busy ? "…" : "Gönder"}
-          </button>
-        </form>
+        <div className="chat-composer">
+          <div className="chat-suggest" aria-label="Örnek sorular">
+            {ORNEK_CUMLELER.map((cumle) => (
+              <button
+                key={cumle}
+                type="button"
+                disabled={busy}
+                onClick={() => void sendMessage(cumle)}
+              >
+                {cumle}
+              </button>
+            ))}
+          </div>
+          <form onSubmit={send}>
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={cfg.placeholder}
+              disabled={busy}
+            />
+            <button type="submit" disabled={busy}>
+              {busy ? "…" : "Gönder"}
+            </button>
+          </form>
+        </div>
       }
     >
-      {visibleChat(messages).length === 0 && <p className="hint">{cfg.karsilama}</p>}
+      {visibleChat(messages).length === 0 && !busy && <p className="hint">{cfg.karsilama}</p>}
       {visibleChat(messages).map((m) => (
         <div key={m.id} className={`bubble ${m.rol}`}>
           <ChatMd text={m.icerik} />
         </div>
       ))}
+      {busy && (
+        <div className="bubble assistant is-typing" aria-live="polite">
+          <span className="chat-typing">Asistan yazıyor</span>
+        </div>
+      )}
       {error && <p className="err">{error}</p>}
     </ChatShell>
   );

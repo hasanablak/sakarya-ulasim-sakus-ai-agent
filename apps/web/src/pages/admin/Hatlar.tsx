@@ -3,6 +3,24 @@ import { Link } from "react-router-dom";
 import { api } from "../../api";
 import { HatlarOzet, type HatOzetData } from "./HatlarOzet";
 import { IngestBanner } from "./IngestBanner";
+import {
+  btnPrimary,
+  btnSecondary,
+  cx,
+  errText,
+  inputCls,
+  linkCls,
+  muted,
+  pageHead,
+  pageStack,
+  pageSub,
+  pageTitle,
+  tableCls,
+  tableWrap,
+  tdCls,
+  thCls,
+  trCls,
+} from "./ui";
 
 type Hat = {
   id: number;
@@ -55,15 +73,18 @@ export function HatlarPage() {
   }, [ingestRunning, lastJob?.status]);
 
   return (
-    <div>
-      <header className="page-head">
+    <div className={pageStack}>
+      <header className={pageHead}>
         <div>
-          <h1>Otobüs hatları</h1>
-          <p>{hatlar.length} hat kayıtlı. Canlı: {live.length ? live.join(", ") : "yok"}</p>
+          <h1 className={pageTitle}>Otobüs hatları</h1>
+          <p className={pageSub}>
+            {hatlar.length} hat kayıtlı. Canlı: {live.length ? live.join(", ") : "yok"}
+          </p>
         </div>
-        <div className="row">
+        <div className="flex items-center gap-2">
           <button
             type="button"
+            className={btnPrimary}
             disabled={ingestRunning || !scraperUp}
             onClick={async () => {
               setMsg(null);
@@ -82,47 +103,57 @@ export function HatlarPage() {
       </header>
       {lastJob && <IngestBanner job={lastJob} />}
       {ozet && <HatlarOzet ozet={ozet} liveCount={live.length} scraperUp={scraperUp} />}
-      {msg && lastJob?.status !== "running" && <p className="banner">{msg}</p>}
+      {msg && lastJob?.status !== "running" && (
+        <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-500">{msg}</p>
+      )}
       {!scraperUp && (
-        <p className="err">Puppeteer konteyneri kapalı. `docker compose up -d --build scraper` çalıştır.</p>
+        <p className={errText}>Puppeteer konteyneri kapalı. `docker compose up -d --build scraper` çalıştır.</p>
       )}
       <form
-        className="row"
+        className="flex items-center gap-2"
         onSubmit={(e) => {
           e.preventDefault();
           load().catch((err) => setMsg(String(err.message)));
         }}
       >
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Kod, ad, slug ara" />
-        <button type="submit">Ara</button>
+        <input className={inputCls} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Kod, ad, slug ara" />
+        <button type="submit" className={btnSecondary}>
+          Ara
+        </button>
       </form>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Kod</th>
-            <th>Ad</th>
-            <th>Son çekim</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {hatlar.map((h) => (
-            <tr key={h.id}>
-              <td>
-                <strong>{h.kod}</strong>
-              </td>
-              <td>
-                {h.ad}
-                <div className="muted">{h.bus_type_name}</div>
-              </td>
-              <td className="muted">{h.last_ingested_at ? new Date(h.last_ingested_at).toLocaleString("tr-TR") : "—"}</td>
-              <td>
-                <Link to={`/admin/hatlar/${h.slug}`}>Detay</Link>
-              </td>
+      <div className={tableWrap}>
+        <table className={tableCls}>
+          <thead>
+            <tr>
+              <th className={thCls}>Kod</th>
+              <th className={thCls}>Ad</th>
+              <th className={thCls}>Son çekim</th>
+              <th className={thCls}></th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+            {hatlar.map((h) => (
+              <tr key={h.id} className={trCls}>
+                <td className={tdCls}>
+                  <strong>{h.kod}</strong>
+                </td>
+                <td className={tdCls}>
+                  {h.ad}
+                  <div className={cx(muted, "text-xs")}>{h.bus_type_name}</div>
+                </td>
+                <td className={cx(tdCls, muted)}>
+                  {h.last_ingested_at ? new Date(h.last_ingested_at).toLocaleString("tr-TR") : "—"}
+                </td>
+                <td className={tdCls}>
+                  <Link className={linkCls} to={`/admin/hatlar/${h.slug}`}>
+                    Detay
+                  </Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

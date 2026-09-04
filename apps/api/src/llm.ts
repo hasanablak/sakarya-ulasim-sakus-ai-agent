@@ -1,0 +1,307 @@
+import { FONKSIYONLAR, fonksiyonByKod, fonksiyonJsonSchema, type FonksiyonTanim } from "./tool-functions.js";
+import type { AgentChatTool } from "./agent-store.js";
+import { resolveWiroCreds, runWiroGeminiFlash } from "./wiro.js";
+
+export type LlmMessage =
+  | { role: "system"; content: string }
+  | { role: "user"; content: string }
+  | { role: "assistant"; content: string | null; tool_calls?: LlmToolCall[] }
+  | { role: "tool"; tool_call_id: string; name: string; content: string };
+
+export type LlmToolCall = { id: string; name: string; arguments: string };
+
+export type LlmCompletion = { content: string | null; tool_calls: LlmToolCall[] };
+
+const OPENAI_COMPAT: Record<string, string> = {
+  openai: "https://api.openai.com/v1/chat/completions",
+  groq: "https://api.groq.com/openai/v1/chat/completions",
+  google: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+};
+
+export function llmDestekleniyor(saglayici: string): boolean {
+  return saglayici === "anthropic" || saglayici === "wiro" || saglayici in OPENAI_COMPAT;
+}
+
+export function toolOpenAiDefs(tools: AgentChatTool[]) {
+  return tools.map((t) => {
+    const fn: FonksiyonTanim | undefined = fonksiyonByKod(t.fonksiyon_kod) ?? FONKSIYONLAR.find((f) => f.kod === t.ad);
+    const schema = fn ? fonksiyonJsonSchema(fn) : { type: "object" as const, properties: {}, required: [] as string[] };
+    return {
+      type: "function" as const,
+      function: {
+        name: t.ad,
+        description: t.aciklama || fn?.aciklama || t.ad,
+        parameters: schema,
+      },
+    };
+  });
+}
+
+function toolAnthropicDefs(tools: AgentChatTool[]) {
+  return tools.map((t) => {
+    const fn = fonksiyonByKod(t.fonksiyon_kod);
+    const schema = fn ? fonksiyonJsonSchema(fn) : { type: "object" as const, properties: {}, required: [] as string[] };
+    return {
+      name: t.ad,
+      description: t.aciklama || fn?.aciklama || t.ad,
+      input_schema: schema,
+    };
+  });
+}
+
+function sanitizeErr(s: string): string {
+  return s
+    .replace(/sk-[a-zA-Z0-9._-]{8,}/g, "sk-…")
+    .replace(/cursor_[a-zA-Z0-9._-]{8,}/g, "cursor_…")
+    .replace(/Bearer\s+\S+/gi, "Bearer …")
+    .slice(0, 400);
+}
+
+function toOpenAiMessages(messages: LlmMessage[]) {
+  return messages.map((m) => {
+    if (m.role === "tool") {
+      return { role: "tool", tool_call_id: m.tool_call_id, content: m.content };
+    }
+    if (m.role === "assistant") {
+      const out: Record<string, unknown> = { role: "assistant", content: m.content ?? "" };
+      if (m.tool_calls?.length) {
+        out.tool_calls = m.tool_calls.map((tc) => ({
+          id: tc.id,
+          type: "function",
+          function: { name: tc.name, arguments: tc.arguments || "{}" },
+        }));
+      }
+      return out;
+    }
+    return { role: m.role, content: m.content };
+  });
+}
+
+function toAnthropic(messages: LlmMessage[]): { system: string; messages: Record<string, unknown>[] } {
+  const system = messages
+    .filter((m): m is Extract<LlmMessage, { role: "system" }> => m.role === "system")
+    .map((m) => m.content)
+    .join("\n\n");
+  const out: Record<string, unknown>[] = [];
+  for (const m of messages) {
+    if (m.role === "system") continue;
+    if (m.role === "user") {
+      out.push({ role: "user", content: m.content });
+      continue;
+    }
+    if (m.role === "assistant") {
+      const content: Record<string, unknown>[] = [];
+      if (m.content) content.push({ type: "text", text: m.content });
+      for (const tc of m.tool_calls ?? []) {
+        let input: unknown = {};
+        try {
+          input = JSON.parse(tc.arguments || "{}");
+        } catch {
+          input = { _raw: tc.arguments };
+        }
+        content.push({ type: "tool_use", id: tc.id, name: tc.name, input });
+      }
+      out.push({ role: "assistant", content: content.length ? content : [{ type: "text", text: m.content ?? "" }] });
+      continue;
+    }
+    const block = { type: "tool_result", tool_use_id: m.tool_call_id, content: m.content };
+    const last = out[out.length - 1];
+    if (last && last.role === "user" && Array.isArray(last.content) && (last.content[0] as { type?: string })?.type === "tool_result") {
+      (last.content as unknown[]).push(block);
+    } else {
+      out.push({ role: "user", content: [block] });
+    }
+  }
+  return { system, messages: out };
+}
+
+async function postJson(url: string, headers: Record<string, string>, body: unknown): Promise<unknown> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(45_000),
+  });
+  const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    const err = json.error;
+    const msg =
+      typeof err === "string"
+        ? err
+        : err && typeof err === "object" && "message" in err
+          ? String((err as { message: unknown }).message)
+          : JSON.stringify(json).slice(0, 300);
+    throw new Error(sanitizeErr(msg || `LLM HTTP ${res.status}`));
+  }
+  return json;
+}
+
+async function completeOpenAi(
+  url: string,
+  token: string,
+  model: string,
+  messages: LlmMessage[],
+  tools: AgentChatTool[],
+): Promise<LlmCompletion> {
+  const payload: Record<string, unknown> = {
+    model,
+    messages: toOpenAiMessages(messages),
+    temperature: 0.3,
+    max_tokens: 1024,
+  };
+  if (tools.length) {
+    payload.tools = toolOpenAiDefs(tools);
+    payload.tool_choice = "auto";
+  }
+  const json = (await postJson(url, { Authorization: `Bearer ${token}`, "content-type": "application/json" }, payload)) as {
+    choices?: { message?: { content?: string | null; tool_calls?: { id?: string; function?: { name?: string; arguments?: string } }[] } }[];
+  };
+  const msg = json.choices?.[0]?.message;
+  const tool_calls: LlmToolCall[] = (msg?.tool_calls ?? [])
+    .filter((tc) => tc.function?.name)
+    .map((tc) => ({
+      id: tc.id || `call_${Math.random().toString(36).slice(2, 10)}`,
+      name: String(tc.function?.name),
+      arguments: tc.function?.arguments || "{}",
+    }));
+  const content = typeof msg?.content === "string" && msg.content.trim() ? msg.content : null;
+  return { content, tool_calls };
+}
+
+async function completeAnthropic(
+  token: string,
+  model: string,
+  messages: LlmMessage[],
+  tools: AgentChatTool[],
+): Promise<LlmCompletion> {
+  const { system, messages: anthMessages } = toAnthropic(messages);
+  const payload: Record<string, unknown> = {
+    model,
+    max_tokens: 1024,
+    temperature: 0.3,
+    system,
+    messages: anthMessages,
+  };
+  if (tools.length) payload.tools = toolAnthropicDefs(tools);
+  const json = (await postJson(
+    "https://api.anthropic.com/v1/messages",
+    {
+      "x-api-key": token,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    payload,
+  )) as { content?: { type?: string; text?: string; id?: string; name?: string; input?: unknown }[] };
+  const blocks = json.content ?? [];
+  const texts = blocks.filter((b) => b.type === "text" && b.text).map((b) => String(b.text));
+  const tool_calls: LlmToolCall[] = blocks
+    .filter((b) => b.type === "tool_use" && b.name)
+    .map((b) => ({
+      id: String(b.id || `call_${Math.random().toString(36).slice(2, 10)}`),
+      name: String(b.name),
+      arguments: JSON.stringify(b.input ?? {}),
+    }));
+  return { content: texts.join("\n").trim() || null, tool_calls };
+}
+
+export async function completeLlm(opts: {
+  saglayici: string;
+  model: string;
+  token: string;
+  messages: LlmMessage[];
+  tools: AgentChatTool[];
+  sessionId?: string;
+}): Promise<LlmCompletion> {
+  const sag = opts.saglayici.trim().toLowerCase();
+  if (sag === "wiro") {
+    return completeWiro(opts.token, opts.messages, opts.tools, opts.sessionId);
+  }
+  if (sag === "anthropic") {
+    return completeAnthropic(opts.token, opts.model, opts.messages, opts.tools);
+  }
+  const url = OPENAI_COMPAT[sag];
+  if (!url) throw new Error(`desteklenmeyen LLM: ${opts.saglayici}`);
+  return completeOpenAi(url, opts.token, opts.model, opts.messages, opts.tools);
+}
+
+function wiroToolTalimat(tools: AgentChatTool[]): string {
+  if (!tools.length) return "";
+  const defs = tools.map((t) => {
+    const fn = fonksiyonByKod(t.fonksiyon_kod);
+    return { name: t.ad, description: t.aciklama, parameters: fn ? fonksiyonJsonSchema(fn) : { type: "object", properties: {} } };
+  });
+  return (
+    "\n\nBir araca ihtiyaç varsa düz metin yerine yalnızca şu JSON’u yaz (başka cümle yok):\n" +
+    '{"tool_calls":[{"name":"TOOL_ADI","arguments":{}}]}\n' +
+    `Kullanılabilir araçlar:\n${JSON.stringify(defs)}`
+  );
+}
+
+function messagesToWiroPrompt(messages: LlmMessage[]): { system: string; prompt: string } {
+  const system = messages
+    .filter((m): m is Extract<LlmMessage, { role: "system" }> => m.role === "system")
+    .map((m) => m.content)
+    .join("\n\n");
+  const lines: string[] = [];
+  for (const m of messages) {
+    if (m.role === "system") continue;
+    if (m.role === "user") lines.push(`Kullanıcı: ${m.content}`);
+    else if (m.role === "assistant") {
+      const tools = (m.tool_calls ?? []).map((tc) => `${tc.name}(${tc.arguments})`).join("; ");
+      lines.push(`Asistan: ${m.content ?? ""}${tools ? ` [araç: ${tools}]` : ""}`);
+    } else lines.push(`Araç ${m.name}: ${m.content}`);
+  }
+  const prompt = lines.join("\n").trim() || "Merhaba";
+  return { system, prompt };
+}
+
+function parseWiroCompletion(text: string, tools: AgentChatTool[]): LlmCompletion {
+  const names = new Set(tools.map((t) => t.ad));
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidates = [fenced?.[1]?.trim(), text.trim()].filter((x): x is string => Boolean(x));
+  for (const raw of candidates) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    const obj = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+    if (!obj) continue;
+    const calls = obj.tool_calls;
+    if (!Array.isArray(calls) || !calls.length) continue;
+    const tool_calls: LlmToolCall[] = [];
+    for (const c of calls) {
+      if (!c || typeof c !== "object") continue;
+      const o = c as { name?: unknown; arguments?: unknown };
+      if (typeof o.name !== "string" || !names.has(o.name)) continue;
+      tool_calls.push({
+        id: `call_${Math.random().toString(36).slice(2, 10)}`,
+        name: o.name,
+        arguments: typeof o.arguments === "string" ? o.arguments : JSON.stringify(o.arguments ?? {}),
+      });
+    }
+    if (tool_calls.length) return { content: null, tool_calls };
+  }
+  return { content: text.trim() || null, tool_calls: [] };
+}
+
+async function completeWiro(
+  token: string,
+  messages: LlmMessage[],
+  tools: AgentChatTool[],
+  sessionId?: string,
+): Promise<LlmCompletion> {
+  const creds = resolveWiroCreds(token);
+  if (!creds) throw new Error("Wiro API anahtarı veya sırrı yok (.env WIRO_API_KEY / WIRO_API_SECRET)");
+  const { system, prompt } = messagesToWiroPrompt(messages);
+  const text = await runWiroGeminiFlash(creds, {
+    prompt,
+    userId: "sakus",
+    sessionId: sessionId || "sakus",
+    systemInstructions: `${system}${wiroToolTalimat(tools)}`,
+    thinkingLevel: "low",
+    maxOutputTokens: 1024,
+  });
+  return parseWiroCompletion(text, tools);
+}

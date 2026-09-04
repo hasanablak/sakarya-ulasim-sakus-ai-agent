@@ -1,0 +1,10 @@
+node_modules
+.git
+apps/web/src
+apps/web/dist
+apps/web/index.html
+**/.env
+**/.DS_Store
+dist
+coverage
+*.log

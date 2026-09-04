@@ -1,0 +1,47 @@
+# MySQL + Puppeteer/Chrome. API ve web yerelde: npm run dev
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: sakus_ai
+      MYSQL_USER: sakus
+      MYSQL_PASSWORD: sakus
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - sakus_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-usakus", "-psakus"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  scraper:
+    build:
+      context: .
+      dockerfile: apps/scraper/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3102:3102"
+    environment:
+      SCRAPER_PORT: "3102"
+      API_PUBLIC_URL: http://host.docker.internal:3001
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-internal-secret}
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+      PUPPETEER_HEADLESS: "true"
+      SAKUS_BASE_URL: https://sakus.sakarya.bel.tr
+      SAKUS_API_BASE_URL: https://sbbpublicapi.sakarya.bel.tr
+      INGEST_DELAY_MS: "1800"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    shm_size: "1gb"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+volumes:
+  sakus_mysql:

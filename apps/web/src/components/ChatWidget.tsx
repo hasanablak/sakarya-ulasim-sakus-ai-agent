@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { DEFAULT_WEBCHAT_TEMA, type WebchatPublic } from "@sakus/shared";
 import { api, getSessionId, setSessionId, type ChatMessage } from "../api";
+import { ChatMd } from "./ChatMd";
 import { ChatShell } from "./ChatShell";
 
 const FALLBACK: WebchatPublic = {
@@ -131,7 +132,7 @@ export function ChatWidget({ slug, embed, host }: { slug?: string; embed?: boole
       {visibleChat(messages).length === 0 && <p className="hint">{cfg.karsilama}</p>}
       {visibleChat(messages).map((m) => (
         <div key={m.id} className={`bubble ${m.rol}`}>
-          {m.icerik}
+          <ChatMd text={m.icerik} />
         </div>
       ))}
       {error && <p className="err">{error}</p>}

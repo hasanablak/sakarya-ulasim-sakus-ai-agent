@@ -169,10 +169,12 @@ async function produceReply(opts: {
         role: "assistant",
         content: completion.content,
         tool_calls: completion.tool_calls,
+        extra_content: completion.extra_content,
       });
       await insertMesaj(sessionId, "assistant", completion.content ?? "", {
         kind: "tool_calls",
         tool_calls: completion.tool_calls,
+        extra_content: completion.extra_content ?? null,
         llm_saglayici: agent.llm_saglayici,
         model: agent.model,
         sure_ms: llmMs,
@@ -276,18 +278,36 @@ function rowToLlm(r: RowDataPacket): LlmMessage | null {
   }
   if (rol === "assistant") {
     const rawCalls = meta?.tool_calls;
+    const extra_content =
+      meta?.extra_content && typeof meta.extra_content === "object" && !Array.isArray(meta.extra_content)
+        ? (meta.extra_content as Record<string, unknown>)
+        : undefined;
     const tool_calls: LlmToolCall[] = Array.isArray(rawCalls)
       ? rawCalls
           .map((tc) => {
             if (!tc || typeof tc !== "object") return null;
-            const o = tc as { id?: unknown; name?: unknown; arguments?: unknown };
+            const o = tc as { id?: unknown; name?: unknown; arguments?: unknown; extra_content?: unknown };
             if (typeof o.id !== "string" || typeof o.name !== "string") return null;
-            return { id: o.id, name: o.name, arguments: typeof o.arguments === "string" ? o.arguments : "{}" };
+            const extra =
+              o.extra_content && typeof o.extra_content === "object" && !Array.isArray(o.extra_content)
+                ? (o.extra_content as Record<string, unknown>)
+                : undefined;
+            return {
+              id: o.id,
+              name: o.name,
+              arguments: typeof o.arguments === "string" ? o.arguments : "{}",
+              ...(extra ? { extra_content: extra } : {}),
+            };
           })
           .filter((x): x is LlmToolCall => Boolean(x))
       : [];
     if (!icerik.trim() && !tool_calls.length) return null;
-    return { role: "assistant", content: icerik.trim() ? icerik : null, tool_calls: tool_calls.length ? tool_calls : undefined };
+    return {
+      role: "assistant",
+      content: icerik.trim() ? icerik : null,
+      tool_calls: tool_calls.length ? tool_calls : undefined,
+      extra_content,
+    };
   }
   return null;
 }

@@ -176,15 +176,34 @@ export type HatRow = RowDataPacket & {
   last_ingested_at: Date | null;
 };
 
+/** "Sakaryapark Küpçüler" → SAKARYAPARK - KÜPÇÜLER gibi tireli adları da tutar. */
+export function hatSearchClause(q: string, alias = ""): { sql: string; params: string[] } {
+  const col = (name: string) => (alias ? `${alias}.${name}` : name);
+  const tokens = q
+    .split(/[\s,./_|-]+/u)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2)
+    .slice(0, 5);
+  const parts = tokens.length ? tokens : [q.trim()].filter(Boolean);
+  const clauses: string[] = [];
+  const params: string[] = [];
+  for (const t of parts) {
+    clauses.push(`(${col("kod")} LIKE ? OR ${col("ad")} LIKE ? OR ${col("slug")} LIKE ?)`);
+    const like = `%${t}%`;
+    params.push(like, like, like);
+  }
+  return { sql: clauses.join(" AND ") || "1=0", params };
+}
+
 export async function listHatlar(q?: string): Promise<HatRow[]> {
   if (q) {
-    const like = `%${q}%`;
+    const { sql, params } = hatSearchClause(q);
     return query<HatRow[]>(
       `SELECT id, kod, slug, ad, bus_type_name, bus_type_color, asis_id, last_ingested_at
        FROM hatlar
-       WHERE kod LIKE ? OR ad LIKE ? OR slug LIKE ?
+       WHERE ${sql}
        ORDER BY kod`,
-      [like, like, like],
+      params,
     );
   }
   return query<HatRow[]>(

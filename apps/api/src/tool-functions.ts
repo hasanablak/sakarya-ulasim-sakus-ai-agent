@@ -1,6 +1,6 @@
 import type { RowDataPacket } from "mysql2";
 import { exec, query } from "./db.js";
-import { getHatBySlug, listHatlar } from "./jobs.js";
+import { getHatBySlug, hatSearchClause, listHatlar } from "./jobs.js";
 
 export type ToolArg = {
   name: string;
@@ -97,15 +97,16 @@ async function resolveHat(ref: string) {
 
 async function otobusSorgula(args: Record<string, unknown>): Promise<FnResult> {
   const q = str(args.q) || undefined;
+  const filtre = q ? hatSearchClause(q, "h") : { sql: "", params: [] as string[] };
   const ozet = await query<RowDataPacket[]>(
     `SELECT h.id, h.kod, h.slug, h.ad, h.bus_type_name, h.last_ingested_at,
             (SELECT COUNT(DISTINCT hd.durak_id) FROM hat_duraklari hd WHERE hd.hat_id = h.id) AS durak_sayisi,
             (SELECT COUNT(*) FROM hat_seferleri s WHERE s.hat_id = h.id) AS sefer_sayisi,
             (SELECT COUNT(*) FROM arac_son_konum a WHERE a.hat_id = h.id) AS arac_sayisi
      FROM hatlar h
-     ${q ? "WHERE h.kod LIKE ? OR h.ad LIKE ? OR h.slug LIKE ?" : ""}
+     ${filtre.sql ? `WHERE ${filtre.sql}` : ""}
      ORDER BY h.kod`,
-    q ? [`%${q}%`, `%${q}%`, `%${q}%`] : [],
+    filtre.params,
   );
   return {
     ok: true,

@@ -5,12 +5,46 @@ import { resolveWiroCreds, runWiroGeminiFlash } from "./wiro.js";
 export type LlmMessage =
   | { role: "system"; content: string }
   | { role: "user"; content: string }
-  | { role: "assistant"; content: string | null; tool_calls?: LlmToolCall[] }
+  | { role: "assistant"; content: string | null; tool_calls?: LlmToolCall[]; extra_content?: Record<string, unknown> }
   | { role: "tool"; tool_call_id: string; name: string; content: string };
 
-export type LlmToolCall = { id: string; name: string; arguments: string };
+export type LlmToolCall = {
+  id: string;
+  name: string;
+  arguments: string;
+  extra_content?: Record<string, unknown>;
+};
 
-export type LlmCompletion = { content: string | null; tool_calls: LlmToolCall[] };
+export type LlmCompletion = {
+  content: string | null;
+  tool_calls: LlmToolCall[];
+  extra_content?: Record<string, unknown>;
+};
+
+/** Gemini 3 OpenAI-compat: imza yoksa 400; Google’ın atlama dizesi eski turları kurtarır. */
+const GEMINI_SKIP_THOUGHT = "skip_thought_signature_validator";
+
+type OpenAiToolCallRaw = {
+  id?: string;
+  function?: { name?: string; arguments?: string };
+  extra_content?: unknown;
+};
+
+function asExtraContent(raw: unknown): Record<string, unknown> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  return raw as Record<string, unknown>;
+}
+
+function hasThoughtSignature(extra?: Record<string, unknown>): boolean {
+  if (!extra) return false;
+  for (const key of ["google", "vertex"] as const) {
+    const nest = extra[key];
+    if (nest && typeof nest === "object" && "thought_signature" in nest) {
+      return typeof (nest as { thought_signature?: unknown }).thought_signature === "string";
+    }
+  }
+  return typeof extra.thought_signature === "string";
+}
 
 const OPENAI_COMPAT: Record<string, string> = {
   openai: "https://api.openai.com/v1/chat/completions",
@@ -57,19 +91,28 @@ function sanitizeErr(s: string): string {
     .slice(0, 400);
 }
 
-function toOpenAiMessages(messages: LlmMessage[]) {
+function toOpenAiMessages(messages: LlmMessage[], googleThought = false) {
   return messages.map((m) => {
     if (m.role === "tool") {
       return { role: "tool", tool_call_id: m.tool_call_id, content: m.content };
     }
     if (m.role === "assistant") {
       const out: Record<string, unknown> = { role: "assistant", content: m.content ?? "" };
+      if (m.extra_content) out.extra_content = m.extra_content;
       if (m.tool_calls?.length) {
-        out.tool_calls = m.tool_calls.map((tc) => ({
-          id: tc.id,
-          type: "function",
-          function: { name: tc.name, arguments: tc.arguments || "{}" },
-        }));
+        out.tool_calls = m.tool_calls.map((tc) => {
+          const call: Record<string, unknown> = {
+            id: tc.id,
+            type: "function",
+            function: { name: tc.name, arguments: tc.arguments || "{}" },
+          };
+          if (tc.extra_content && hasThoughtSignature(tc.extra_content)) {
+            call.extra_content = tc.extra_content;
+          } else if (googleThought) {
+            call.extra_content = { google: { thought_signature: GEMINI_SKIP_THOUGHT } };
+          }
+          return call;
+        });
       }
       return out;
     }
@@ -142,10 +185,11 @@ async function completeOpenAi(
   model: string,
   messages: LlmMessage[],
   tools: AgentChatTool[],
+  googleThought = false,
 ): Promise<LlmCompletion> {
   const payload: Record<string, unknown> = {
     model,
-    messages: toOpenAiMessages(messages),
+    messages: toOpenAiMessages(messages, googleThought),
     temperature: 0.3,
     max_tokens: 1024,
   };
@@ -154,18 +198,29 @@ async function completeOpenAi(
     payload.tool_choice = "auto";
   }
   const json = (await postJson(url, { Authorization: `Bearer ${token}`, "content-type": "application/json" }, payload)) as {
-    choices?: { message?: { content?: string | null; tool_calls?: { id?: string; function?: { name?: string; arguments?: string } }[] } }[];
+    choices?: {
+      message?: {
+        content?: string | null;
+        extra_content?: unknown;
+        tool_calls?: OpenAiToolCallRaw[];
+      };
+    }[];
   };
   const msg = json.choices?.[0]?.message;
   const tool_calls: LlmToolCall[] = (msg?.tool_calls ?? [])
     .filter((tc) => tc.function?.name)
-    .map((tc) => ({
-      id: tc.id || `call_${Math.random().toString(36).slice(2, 10)}`,
-      name: String(tc.function?.name),
-      arguments: tc.function?.arguments || "{}",
-    }));
+    .map((tc) => {
+      const extra = asExtraContent(tc.extra_content);
+      return {
+        id: tc.id || `call_${Math.random().toString(36).slice(2, 10)}`,
+        name: String(tc.function?.name),
+        arguments: tc.function?.arguments || "{}",
+        ...(extra ? { extra_content: extra } : {}),
+      };
+    });
   const content = typeof msg?.content === "string" && msg.content.trim() ? msg.content : null;
-  return { content, tool_calls };
+  const extra_content = asExtraContent(msg?.extra_content);
+  return { content, tool_calls, ...(extra_content ? { extra_content } : {}) };
 }
 
 async function completeAnthropic(
@@ -221,7 +276,7 @@ export async function completeLlm(opts: {
   }
   const url = OPENAI_COMPAT[sag];
   if (!url) throw new Error(`desteklenmeyen LLM: ${opts.saglayici}`);
-  return completeOpenAi(url, opts.token, opts.model, opts.messages, opts.tools);
+  return completeOpenAi(url, opts.token, opts.model, opts.messages, opts.tools, sag === "google");
 }
 
 function wiroToolTalimat(tools: AgentChatTool[]): string {

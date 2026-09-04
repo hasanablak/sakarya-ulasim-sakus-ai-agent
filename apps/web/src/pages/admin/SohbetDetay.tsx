@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { ChatMd } from "../../components/ChatMd";
 import { api } from "../../api";
 
 type Mesaj = {
@@ -196,7 +197,9 @@ function MesajBubble({ m }: { m: Mesaj }) {
         {sag || model ? ` · ${[sag, model].filter(Boolean).join(" / ")}` : ""}
         {sure != null ? ` · ${sure} ms` : ""}
       </small>
-      <div>{m.icerik}</div>
+      <div>
+        <ChatMd text={m.icerik} />
+      </div>
       <time>{fmt(m.created_at)}</time>
     </div>
   );

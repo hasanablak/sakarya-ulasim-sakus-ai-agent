@@ -80,6 +80,15 @@ textarea { resize: vertical; min-height: 80px; font-family: ui-monospace, SFMono
 .bubble { white-space: pre-wrap; padding: 10px 12px; border-radius: 14px; max-width: 90%; }
 .bubble.user { align-self: flex-end; background: var(--chat-user-bg, var(--pine)); color: var(--chat-user-fg, #fff); }
 .bubble.assistant, .bubble.system { align-self: flex-start; background: var(--chat-bot-bg, #efe6d6); color: var(--chat-bot-fg, var(--ink)); }
+.chat-md strong { font-weight: 700; }
+.chat-md em { font-style: italic; }
+.chat-md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+  padding: 0.08em 0.35em;
+  border-radius: 6px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
 .hint, .muted { color: var(--muted); }
 .err { color: var(--danger); }
 .banner { background: #fff3c4; border-radius: 12px; padding: 10px 12px; }

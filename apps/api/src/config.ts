@@ -35,8 +35,4 @@ export const apiConfig = {
   },
   scraperDir: resolve(fileURLToPath(new URL(".", import.meta.url)), "../../scraper"),
   scraperUrl: process.env.SCRAPER_URL ?? "http://127.0.0.1:3102",
-  wiro: {
-    apiKey: (process.env.WIRO_API_KEY ?? "").trim(),
-    apiSecret: (process.env.WIRO_API_SECRET ?? "").trim(),
-  },
 };

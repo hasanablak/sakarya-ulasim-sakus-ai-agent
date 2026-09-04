@@ -8,7 +8,7 @@ const TOOL_AD = /^[a-z][a-z0-9_]{1,63}$/;
 function parseSaglayici(raw: string | undefined, fallback = "openai"): string {
   const sag = (raw ?? fallback).trim().toLowerCase() || fallback;
   if (!LLM_SAGLAYICILAR.some((s) => s.id === sag)) {
-    throw new Error("LLM OpenAI, Claude, Gemini veya Groq olmalı");
+    throw new Error("LLM OpenAI, Claude, Gemini, Groq veya OpenRouter olmalı");
   }
   return sag;
 }

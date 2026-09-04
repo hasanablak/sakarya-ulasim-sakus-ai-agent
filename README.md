@@ -72,11 +72,6 @@ npm run dev
 
 `POST /api/chat` webchat’in agent’ını kullanır. Public widget yalnızca müşteri / asistan metnini görür; tool JSON’u admin’dedir.
 
-| Sağlayıcı | Not |
-|---|---|
-| OpenAI, Claude, Gemini, Groq | Agent formundaki token |
-| Wiro (`google/gemini-3-7-flash`) | `.env` → `WIRO_API_KEY` + `WIRO_API_SECRET` (HMAC imza). Agent’taki yabancı `sk-` / `AIza` token’ı Wiro’ya gitmez. |
-
 Kod fonksiyonları API’de yaşar; admin tool kaydı bir fonksiyona bağlanır:
 
 | Fonksiyon | Ne döner |
@@ -102,7 +97,6 @@ Kök `.env` (commit etme). Şablon: `.env.example`.
 | `ADMIN_PASSWORD` | Yönetim girişi |
 | `INTERNAL_SECRET` | Scraper → API iç çağrı |
 | `SCRAPER_URL` | `http://127.0.0.1:3102` |
-| `WIRO_API_KEY` / `WIRO_API_SECRET` | Wiro sohbet |
 
 ## Geliştirme
 

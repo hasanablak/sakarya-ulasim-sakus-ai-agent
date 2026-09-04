@@ -39,7 +39,7 @@ export const LLM_SAGLAYICILAR = [
   { id: "anthropic", ad: "Claude (Anthropic)" },
   { id: "google", ad: "Google Gemini" },
   { id: "groq", ad: "Groq" },
-  { id: "wiro", ad: "Wiro (Gemini 3.7 Flash)" },
+  { id: "openrouter", ad: "OpenRouter" },
 ] as const;
 
 export type LlmSaglayici = (typeof LLM_SAGLAYICILAR)[number]["id"];
@@ -57,16 +57,16 @@ export type FonksiyonKod = (typeof FONKSIYON_KODLARI)[number];
 export type ToolFnResult = { ok: boolean; data?: unknown; error?: string; stale?: boolean };
 
 export const DEFAULT_WEBCHAT_TEMA = {
-  header_bg: "#16332b",
-  header_fg: "#d8f06a",
-  fab_bg: "#16332b",
-  fab_fg: "#d8f06a",
-  panel_bg: "#fffaf2",
-  user_bg: "#1f4a3d",
+  header_bg: "#06a05a",
+  header_fg: "#ffffff",
+  fab_bg: "#06a05a",
+  fab_fg: "#ffffff",
+  panel_bg: "#ffffff",
+  user_bg: "#06a05a",
   user_fg: "#ffffff",
-  bot_bg: "#efe6d6",
-  bot_fg: "#1c1915",
-  border: "#d7cbb8",
+  bot_bg: "#edeff0",
+  bot_fg: "#040404",
+  border: "#d7dae0",
   panel_width: 380,
 } as const;
 

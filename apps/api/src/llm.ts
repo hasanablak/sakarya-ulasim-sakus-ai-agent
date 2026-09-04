@@ -1,11 +1,16 @@
 import { FONKSIYONLAR, fonksiyonByKod, fonksiyonJsonSchema, type FonksiyonTanim } from "./tool-functions.js";
 import type { AgentChatTool } from "./agent-store.js";
-import { resolveWiroCreds, runWiroGeminiFlash } from "./wiro.js";
 
 export type LlmMessage =
   | { role: "system"; content: string }
   | { role: "user"; content: string }
-  | { role: "assistant"; content: string | null; tool_calls?: LlmToolCall[]; extra_content?: Record<string, unknown> }
+  | {
+      role: "assistant";
+      content: string | null;
+      tool_calls?: LlmToolCall[];
+      extra_content?: Record<string, unknown>;
+      reasoning_details?: unknown;
+    }
   | { role: "tool"; tool_call_id: string; name: string; content: string };
 
 export type LlmToolCall = {
@@ -19,6 +24,7 @@ export type LlmCompletion = {
   content: string | null;
   tool_calls: LlmToolCall[];
   extra_content?: Record<string, unknown>;
+  reasoning_details?: unknown;
 };
 
 /** Gemini 3 OpenAI-compat: imza yoksa 400; Google’ın atlama dizesi eski turları kurtarır. */
@@ -50,10 +56,11 @@ const OPENAI_COMPAT: Record<string, string> = {
   openai: "https://api.openai.com/v1/chat/completions",
   groq: "https://api.groq.com/openai/v1/chat/completions",
   google: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+  openrouter: "https://openrouter.ai/api/v1/chat/completions",
 };
 
 export function llmDestekleniyor(saglayici: string): boolean {
-  return saglayici === "anthropic" || saglayici === "wiro" || saglayici in OPENAI_COMPAT;
+  return saglayici === "anthropic" || saglayici in OPENAI_COMPAT;
 }
 
 export function toolOpenAiDefs(tools: AgentChatTool[]) {
@@ -85,6 +92,7 @@ function toolAnthropicDefs(tools: AgentChatTool[]) {
 
 function sanitizeErr(s: string): string {
   return s
+    .replace(/sk-or-v1-[a-zA-Z0-9._-]{8,}/g, "sk-or-…")
     .replace(/sk-[a-zA-Z0-9._-]{8,}/g, "sk-…")
     .replace(/cursor_[a-zA-Z0-9._-]{8,}/g, "cursor_…")
     .replace(/Bearer\s+\S+/gi, "Bearer …")
@@ -99,6 +107,7 @@ function toOpenAiMessages(messages: LlmMessage[], googleThought = false) {
     if (m.role === "assistant") {
       const out: Record<string, unknown> = { role: "assistant", content: m.content ?? "" };
       if (m.extra_content) out.extra_content = m.extra_content;
+      if (m.reasoning_details != null) out.reasoning_details = m.reasoning_details;
       if (m.tool_calls?.length) {
         out.tool_calls = m.tool_calls.map((tc) => {
           const call: Record<string, unknown> = {
@@ -197,11 +206,17 @@ async function completeOpenAi(
     payload.tools = toolOpenAiDefs(tools);
     payload.tool_choice = "auto";
   }
-  const json = (await postJson(url, { Authorization: `Bearer ${token}`, "content-type": "application/json" }, payload)) as {
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}`, "content-type": "application/json" };
+  if (url.includes("openrouter.ai")) {
+    headers["HTTP-Referer"] = "https://sakus.sakarya.bel.tr";
+    headers["X-Title"] = "SAKUS";
+  }
+  const json = (await postJson(url, headers, payload)) as {
     choices?: {
       message?: {
         content?: string | null;
         extra_content?: unknown;
+        reasoning_details?: unknown;
         tool_calls?: OpenAiToolCallRaw[];
       };
     }[];
@@ -220,7 +235,13 @@ async function completeOpenAi(
     });
   const content = typeof msg?.content === "string" && msg.content.trim() ? msg.content : null;
   const extra_content = asExtraContent(msg?.extra_content);
-  return { content, tool_calls, ...(extra_content ? { extra_content } : {}) };
+  const reasoning_details = msg?.reasoning_details;
+  return {
+    content,
+    tool_calls,
+    ...(extra_content ? { extra_content } : {}),
+    ...(reasoning_details != null ? { reasoning_details } : {}),
+  };
 }
 
 async function completeAnthropic(
@@ -265,98 +286,12 @@ export async function completeLlm(opts: {
   token: string;
   messages: LlmMessage[];
   tools: AgentChatTool[];
-  sessionId?: string;
 }): Promise<LlmCompletion> {
   const sag = opts.saglayici.trim().toLowerCase();
-  if (sag === "wiro") {
-    return completeWiro(opts.token, opts.messages, opts.tools, opts.sessionId);
-  }
   if (sag === "anthropic") {
     return completeAnthropic(opts.token, opts.model, opts.messages, opts.tools);
   }
   const url = OPENAI_COMPAT[sag];
   if (!url) throw new Error(`desteklenmeyen LLM: ${opts.saglayici}`);
   return completeOpenAi(url, opts.token, opts.model, opts.messages, opts.tools, sag === "google");
-}
-
-function wiroToolTalimat(tools: AgentChatTool[]): string {
-  if (!tools.length) return "";
-  const defs = tools.map((t) => {
-    const fn = fonksiyonByKod(t.fonksiyon_kod);
-    return { name: t.ad, description: t.aciklama, parameters: fn ? fonksiyonJsonSchema(fn) : { type: "object", properties: {} } };
-  });
-  return (
-    "\n\nBir araca ihtiyaç varsa düz metin yerine yalnızca şu JSON’u yaz (başka cümle yok):\n" +
-    '{"tool_calls":[{"name":"TOOL_ADI","arguments":{}}]}\n' +
-    `Kullanılabilir araçlar:\n${JSON.stringify(defs)}`
-  );
-}
-
-function messagesToWiroPrompt(messages: LlmMessage[]): { system: string; prompt: string } {
-  const system = messages
-    .filter((m): m is Extract<LlmMessage, { role: "system" }> => m.role === "system")
-    .map((m) => m.content)
-    .join("\n\n");
-  const lines: string[] = [];
-  for (const m of messages) {
-    if (m.role === "system") continue;
-    if (m.role === "user") lines.push(`Kullanıcı: ${m.content}`);
-    else if (m.role === "assistant") {
-      const tools = (m.tool_calls ?? []).map((tc) => `${tc.name}(${tc.arguments})`).join("; ");
-      lines.push(`Asistan: ${m.content ?? ""}${tools ? ` [araç: ${tools}]` : ""}`);
-    } else lines.push(`Araç ${m.name}: ${m.content}`);
-  }
-  const prompt = lines.join("\n").trim() || "Merhaba";
-  return { system, prompt };
-}
-
-function parseWiroCompletion(text: string, tools: AgentChatTool[]): LlmCompletion {
-  const names = new Set(tools.map((t) => t.ad));
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const candidates = [fenced?.[1]?.trim(), text.trim()].filter((x): x is string => Boolean(x));
-  for (const raw of candidates) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      continue;
-    }
-    const obj = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
-    if (!obj) continue;
-    const calls = obj.tool_calls;
-    if (!Array.isArray(calls) || !calls.length) continue;
-    const tool_calls: LlmToolCall[] = [];
-    for (const c of calls) {
-      if (!c || typeof c !== "object") continue;
-      const o = c as { name?: unknown; arguments?: unknown };
-      if (typeof o.name !== "string" || !names.has(o.name)) continue;
-      tool_calls.push({
-        id: `call_${Math.random().toString(36).slice(2, 10)}`,
-        name: o.name,
-        arguments: typeof o.arguments === "string" ? o.arguments : JSON.stringify(o.arguments ?? {}),
-      });
-    }
-    if (tool_calls.length) return { content: null, tool_calls };
-  }
-  return { content: text.trim() || null, tool_calls: [] };
-}
-
-async function completeWiro(
-  token: string,
-  messages: LlmMessage[],
-  tools: AgentChatTool[],
-  sessionId?: string,
-): Promise<LlmCompletion> {
-  const creds = resolveWiroCreds(token);
-  if (!creds) throw new Error("Wiro API anahtarı veya sırrı yok (.env WIRO_API_KEY / WIRO_API_SECRET)");
-  const { system, prompt } = messagesToWiroPrompt(messages);
-  const text = await runWiroGeminiFlash(creds, {
-    prompt,
-    userId: "sakus",
-    sessionId: sessionId || "sakus",
-    systemInstructions: `${system}${wiroToolTalimat(tools)}`,
-    thinkingLevel: "low",
-    maxOutputTokens: 1024,
-  });
-  return parseWiroCompletion(text, tools);
 }

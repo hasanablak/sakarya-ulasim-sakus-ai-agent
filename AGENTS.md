@@ -55,7 +55,7 @@ Public widget yalnızca `user` / `assistant` metinlerini görür; tool JSON’u 
 | `otobus_saat_sorgula` | Hareket saatleri |
 | `yakin_duraklar` | lat/lng + 600 m yürüme; durak + geçen hatlar |
 
-`rota_oneri` henüz yok. Yolcu sohbeti: OpenAI / Claude / Gemini / Groq / Wiro (`google/gemini-3-7-flash`, Run+Task/Detail veya `/sync`).
+`rota_oneri` henüz yok. Yolcu sohbeti: OpenAI / Claude / Gemini / Groq / OpenRouter.
 
 ## Rota motoru (sonraki faz)
 

@@ -1,0 +1,28 @@
+---
+description: Node API, tool gateway ve dış websocket
+globs: apps/api/**/*.ts
+alwaysApply: false
+---
+
+# Node API (`apps/api`)
+
+Fastify + TypeScript. Görevi: DB, tool’lar, LLM function-calling, scraper iç socket tüketicisi, web’e dış WS.
+
+- Scraper event’ini validate et (`packages/shared` şema), sonra upsert / cache. Ham SAKUS body’sini web’e iletme.
+- Tool handler: input parse → iş → `kullanici_olaylari` insert → dönüş. LLM’e kısa, belirleyici JSON ver.
+- `otobus_hat_konum_ogrenme` DB/memory’deki son konumu okur; Puppeteer launch etmez.
+- Scraper düşerse API ayakta kalsın; son konum + `stale: true` dön.
+- CORS yalnızca web origin. İç socket bind `127.0.0.1`.
+- Hata: logla, tool’da `{ ok: false, error }` — stack client’a gitmez.
+
+```ts
+// ❌ BAD
+export async function otobusHatKonumOgrenme(hat: string) {
+  return scraper.page.evaluate(() => window.__vehicles)
+}
+
+// ✅ GOOD
+export async function otobusHatKonumOgrenme(hat: string) {
+  return vehicleCache.getByHat(hat) // scraper'ın yazdığı son snapshot
+}
+```

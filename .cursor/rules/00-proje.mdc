@@ -1,0 +1,17 @@
+---
+description: SAKUS AI Agent ürün kapsamı, mimari ve çalışma sırası
+alwaysApply: true
+---
+
+# SAKUS projesi
+
+Kaynak: `AGENTS.md`. Üç app: `apps/web` (React), `apps/api` (Fastify), `apps/scraper` (Puppeteer). Paylaşım: `packages/shared`.
+
+- Chatbot ↔ Puppeteer yok. Hub her zaman API.
+- Statik (hat/durak/polyline) ingest ayrı; canlı GPS ayrı.
+- SAKUS: HTML parse yok, response intercept + iç socket.
+- Tool isimleri snake_case; her çağrı `kullanici_olaylari` ile loglanır.
+- Sırayı atlama: önce A1 ingest kanıtı, sonra DB, canlı konum, tool’lar, rota, en son UI.
+
+Kod: TypeScript. UI metni Türkçe. Public `/` tanıtım + sağ alt sohbet; `/admin` hatlar, canlı, konuşmalar, hat güncelleme.
+Belediye sitesine nazik ol (tek tarayıcı, sıra, cache).

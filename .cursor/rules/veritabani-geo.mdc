@@ -1,0 +1,20 @@
+---
+description: Hat/durak/güzergah şeması ve rota geometrisi
+globs: "{**/*.{sql,prisma},apps/api/**/*.{ts},packages/shared/**/*.ts}"
+alwaysApply: false
+---
+
+# Veritabanı ve geo
+
+MySQL 8, `utf8mb4`. Koordinat `DECIMAL(10,7)` + isteğe bağlı `POINT SRID 4326`. Mesafe: `ST_Distance_Sphere`.
+
+- Güzergah: hat + yön için LineString veya encoded polyline; durak sırası ayrı tabloda (polyline durak yerine geçmez).
+- Canlı araç: upsert hot tablo (`arac_id` PK), eski satırı arşivleme ilk sürümde yok.
+- Ingest idempotent: slug / durak kodu unique; tekrar çekince güncelle, çoğaltma.
+- Rota: 600 m yürüme, önce direkt hat, sonra 1 aktarma. 2+ aktarma yok.
+- Migration’lar `apps/api` (veya `packages/db`) içinde versioned; elle prod’da şema kırma.
+
+```sql
+-- hat_duraklari durak sırasını tutar; araç GPS güzergah değildir
+-- yakin durak: ST_Distance_Sphere(durak.geom, POINT(lng, lat)) <= 600
+```

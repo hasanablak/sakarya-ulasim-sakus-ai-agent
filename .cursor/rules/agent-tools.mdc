@@ -1,0 +1,28 @@
+---
+description: Chatbot function-calling tool sözleşmesi
+globs: apps/api/**/*tool*.ts
+alwaysApply: false
+---
+
+# Agent tool’ları
+
+LLM yalnızca API tool’larını çağırır. Yeni tool = JSON schema + handler + `kullanici_olaylari` satırı + `packages/shared` tipi.
+
+Zorunlu set: `otobus_hat_konum_ogrenme`, `kullanici_konum_kaydet`, `hedef_adres_kaydet`, `yakin_duraklar`, `rota_oneri`, `hat_durak_listesi`, `hat_ara`.
+
+- İsimler snake_case, fiil net. Yanıt: `{ ok, data?, error?, stale? }`.
+- Konum/hedef kaydı oturumu günceller; sonraki `rota_oneri` session’dan okuyabilsin.
+- `rota_oneri` scraper tetiklemez; hat_duraklari + hat_guzergah + son konum kullanır.
+- Log: session_id, tool, input (yuvarlanmış koordinat), süre, ok. Tam adres metnini süresiz ham tutma politikasına uy.
+
+```ts
+// ❌ BAD
+{ name: 'getBus', handler: (x) => scrape(x) }
+
+// ✅ GOOD
+{ name: 'otobus_hat_konum_ogrenme', handler: async (args, ctx) => {
+  const data = await ctx.vehicles.byHat(args.hat)
+  await ctx.log.event({ tool: 'otobus_hat_konum_ogrenme', args, ok: true })
+  return { ok: true, data, stale: data.stale }
+}}
+```

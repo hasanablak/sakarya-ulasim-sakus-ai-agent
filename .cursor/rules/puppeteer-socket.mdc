@@ -1,0 +1,28 @@
+---
+description: SAKUS Puppeteer intercept ve iç socket
+globs: apps/scraper/**/*.ts
+alwaysApply: false
+---
+
+# Scraper (`apps/scraper`)
+
+Puppeteer, `https://sakus.sakarya.bel.tr/harita` (ör. `?hat=a1-adaray-51`). Görev: ağ JSON’unu yakala, iç sockete bas. Rota hesaplama, LLM, kullanıcı logu burada yok.
+
+- Puppeteer **Docker** içinde (`compose scraper`, Chrome/Chromium imajda). API işi `SCRAPER_URL` (3102) üzerinden yollar; yerel Chrome aranmaz.
+- `page.on('response')`: JSON + harita/hat/durak/araç URL kalıpları. HTML/CSS/tile yoksay.
+- Ingest: hat listesini al, her slugu sırayla aç, durak + polyline emit, `delay` ile devam. Headless tek browser, tek (veya az) page.
+- Canlı: mümkünse global araç endpoint’ini dinle; yoksa aktif hat sayfalarını döndür. Poll interval’i siteye zarar vermeyecek kadar düşük tut.
+- Socket client → API `127.0.0.1`. Kopunca backoff ile yeniden bağlan; event kaybını health ile söyle.
+- Selector kırılganlığına bağlanma; asıl kaynak network. Endpoint değişirse adapter’ı güncelle, event isimlerini değiştirme.
+
+```ts
+// ❌ BAD
+const html = await page.content()
+const stops = html.match(/durak/gi)
+
+// ✅ GOOD
+page.on('response', async (res) => {
+  if (!isSakusDataUrl(res.url()) || !isJson(res)) return
+  await emitNormalized(await res.json(), res.url())
+})
+```

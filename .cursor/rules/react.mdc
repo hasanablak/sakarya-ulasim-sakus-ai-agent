@@ -1,0 +1,24 @@
+---
+description: React chatbot ve harita UI kuralları
+globs: apps/web/**/*.{ts,tsx,css}
+alwaysApply: false
+---
+
+# React (`apps/web`)
+
+Vite + TypeScript. Function component + hook. Chatbot, konum izni, hedef giriş, canlı otobüs.
+
+- Konum: `navigator.geolocation`; origin API’ye `kullanici_konum_kaydet` ile gider.
+- Canlı araç: yalnızca API dış socket/Socket.IO. Scraper URL’si tarayıcıda yok.
+- Harita kütüphanesi (MapLibre/Leaflet) güzergah + durak + araç marker; chat metni ile aynı session.
+- Tool sonucunu ham JSON basma; Türkçe kısa yanıt + isteğe bağlı harita.
+- Session id’yi localStorage’da tut; her mesajda API’ye gönder.
+- `.env` sadece `VITE_` public değişken; iç socket portunu client’a koyma.
+
+```tsx
+// ❌ BAD
+await fetch('http://127.0.0.1:3100/scraper')
+
+// ✅ GOOD
+await api.tools.otobusHatKonumOgrenme({ hat: 'A1' })
+```

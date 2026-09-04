@@ -70,6 +70,18 @@ export async function ensureOturum(opts: {
   );
 }
 
+export async function oturumKonumu(sessionId: string): Promise<{ lat: number; lng: number } | undefined> {
+  const rows = await query<RowDataPacket[]>(
+    `SELECT origin_lat, origin_lng FROM sohbet_oturumlari WHERE id = ? LIMIT 1`,
+    [sessionId],
+  );
+  const lat = Number(rows[0]?.origin_lat);
+  const lng = Number(rows[0]?.origin_lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return undefined;
+  if (lat === 0 && lng === 0) return undefined;
+  return { lat, lng };
+}
+
 export async function touchOturum(sessionId: string, agentId: number | null): Promise<void> {
   await exec(
     `UPDATE sohbet_oturumlari SET agent_id = COALESCE(?, agent_id), updated_at = CURRENT_TIMESTAMP WHERE id = ?`,

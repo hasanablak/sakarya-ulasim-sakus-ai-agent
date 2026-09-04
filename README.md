@@ -81,8 +81,8 @@ Kod fonksiyonları API’de yaşar; admin tool kaydı bir fonksiyona bağlanır:
 | `otobus_anlik_konum_sorgula` | Son araç konumları (`stale` 30 sn) |
 | `otobus_saat_sorgula` | Hareket saatleri |
 | `yakin_duraklar` | 600 m yürüme, durak + geçen hatlar |
-
-`rota_oneri` henüz yok.
+| `yerden_gecen_hatlar` | Çarşı (Adapazarı merkez) dairesinden geçen hatlar |
+| `rota_oneri` | Yakın durak ∩ hedef (Çarşı) — direkt hat |
 
 Başka siteye gömmek için admin’deki webchat embed script’ini kullan (`embed_key`).
 

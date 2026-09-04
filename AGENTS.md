@@ -54,12 +54,14 @@ Public widget yalnızca `user` / `assistant` metinlerini görür; tool JSON’u 
 | `otobus_anlik_konum_sorgula` | Bir hattın son araç konumları (`stale` 30 sn) |
 | `otobus_saat_sorgula` | Hareket saatleri |
 | `yakin_duraklar` | lat/lng + 600 m yürüme; durak + geçen hatlar |
+| `yerden_gecen_hatlar` | Çarşı / Adapazarı merkez dairesindeki duraklara uğrayan hatlar |
+| `rota_oneri` | Yakın durak hatları ∩ hedef (Çarşı) dairesi; direkt hat |
 
-`rota_oneri` henüz yok. Yolcu sohbeti: OpenAI / Claude / Gemini / Groq / OpenRouter.
+Yolcu sohbeti: OpenAI / Claude / Gemini / Groq / OpenRouter.
 
-## Rota motoru (sonraki faz)
+## Rota motoru
 
-600 m yürüme, direkt hat, sonra 1 aktarma.
+600 m yürüme, direkt hat (`rota_oneri`). 1 aktarma sonraki faz.
 
 ## Socket
 

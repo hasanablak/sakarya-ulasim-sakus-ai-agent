@@ -50,6 +50,8 @@ export const FONKSIYON_KODLARI = [
   "otobus_anlik_konum_sorgula",
   "otobus_saat_sorgula",
   "yakin_duraklar",
+  "yerden_gecen_hatlar",
+  "rota_oneri",
 ] as const;
 
 export type FonksiyonKod = (typeof FONKSIYON_KODLARI)[number];

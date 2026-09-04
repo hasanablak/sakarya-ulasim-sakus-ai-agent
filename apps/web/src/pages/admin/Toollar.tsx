@@ -45,9 +45,9 @@ export function ToollarPage() {
         <div>
           <h1 className={pageTitle}>Tool'lar</h1>
           <p className={pageSub}>
-            Tool tek başına çalışmaz; bir kod fonksiyonuna bağlanır. Beşinci fonksiyon{" "}
-            <code className="font-mono text-xs text-indigo-600 dark:text-indigo-400">yakin_duraklar</code>: konum verince
-            600 m içindeki durakları ve geçen hatları döner — rota önerisinin temeli.
+            Tool tek başına çalışmaz; bir kod fonksiyonuna bağlanır.{" "}
+            <code className="font-mono text-xs text-indigo-600 dark:text-indigo-400">rota_oneri</code> yakın
+            durak hatları ile Çarşı / Adapazarı merkez dairesini kesiştirir.
           </p>
         </div>
         <Link to="/admin/toollar/yeni" className={btnPrimary}>

@@ -29,6 +29,30 @@ export async function seedDefaultTools(): Promise<void> {
       [fn.kod, fn.aciklama, fn.kod],
     );
   }
+  await exec(
+    `INSERT IGNORE INTO agent_toollar (agent_id, tool_id)
+     SELECT a.id, t.id
+     FROM agentler a
+     JOIN toollar t ON t.fonksiyon_kod = 'yerden_gecen_hatlar'
+     WHERE EXISTS (
+       SELECT 1 FROM agent_toollar at
+       JOIN toollar t2 ON t2.id = at.tool_id
+       WHERE at.agent_id = a.id AND t2.fonksiyon_kod IN ('otobus_sorgula', 'yakin_duraklar')
+     )`,
+    [],
+  );
+  await exec(
+    `INSERT IGNORE INTO agent_toollar (agent_id, tool_id)
+     SELECT a.id, t.id
+     FROM agentler a
+     JOIN toollar t ON t.fonksiyon_kod = 'rota_oneri'
+     WHERE EXISTS (
+       SELECT 1 FROM agent_toollar at
+       JOIN toollar t2 ON t2.id = at.tool_id
+       WHERE at.agent_id = a.id AND t2.fonksiyon_kod IN ('otobus_sorgula', 'yakin_duraklar', 'yerden_gecen_hatlar')
+     )`,
+    [],
+  );
 }
 
 export async function listToollar() {

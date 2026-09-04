@@ -1,6 +1,8 @@
 import type { RowDataPacket } from "mysql2";
 import { exec, query } from "./db.js";
 import { getHatBySlug, hatSearchClause, listHatlar } from "./jobs.js";
+import { oturumKonumu } from "./chat-store.js";
+import { eslesenYer, type YerKayit } from "./yer-sozlugu.js";
 
 export type ToolArg = {
   name: string;
@@ -22,7 +24,7 @@ export const FONKSIYONLAR: FonksiyonTanim[] = [
   {
     kod: "otobus_sorgula",
     ad: "Otobüs sorgula",
-    aciklama: "Kayıtlı hatların özetini toplu döner (kod, ad, durak/sefer/araç sayısı).",
+    aciklama: "Kayıtlı hatların özetini toplu döner. q bir yer adıysa (Çarşı, Orta Garaj) o dairenin içinden geçen hatları da ekler.",
     args: [{ name: "q", type: "string", required: false, aciklama: "Kod, ad, slug veya yer; Çarşı = Adapazarı merkez" }],
   },
   {
@@ -50,11 +52,31 @@ export const FONKSIYONLAR: FonksiyonTanim[] = [
   {
     kod: "yakin_duraklar",
     ad: "Yakın duraklar",
-    aciklama: "Konuma en yakın duraklar ve geçen hatlar. Varsayılan yürüme 600 m.",
+    aciklama:
+      "Kullanıcının tarayıcı konumuna en yakın duraklar ve geçen hatlar. lat/lng uydurma; sunucu oturumdan doldurur. Varsayılan yürüme 600 m.",
     args: [
-      { name: "lat", type: "number", required: true, aciklama: "Enlem" },
-      { name: "lng", type: "number", required: true, aciklama: "Boylam" },
+      { name: "lat", type: "number", required: false, aciklama: "Boş bırak; oturum konumu kullanılır" },
+      { name: "lng", type: "number", required: false, aciklama: "Boş bırak; oturum konumu kullanılır" },
       { name: "yari_cap_m", type: "number", required: false, aciklama: "Metre, varsayılan 600" },
+    ],
+  },
+  {
+    kod: "yerden_gecen_hatlar",
+    ad: "Yerden geçen hatlar",
+    aciklama:
+      "Sakarya yer adı (Çarşı = Adapazarı merkez, Orta Garaj) için o noktanın yürüme dairesindeki duraklara uğrayan hatlar. Hat adında yer geçmek zorunda değildir. Konum varken “nasıl giderim” için rota_oneri kullan.",
+    args: [{ name: "yer", type: "string", required: true, aciklama: "çarşı, adapazarı merkez, orta garaj, o. garaj" }],
+  },
+  {
+    kod: "rota_oneri",
+    ad: "Rota öner",
+    aciklama:
+      "“X’e nasıl giderim?” için: yakın duraklardan geçen hatlar ∩ hedef dairesinden geçen hatlar. Çarşı = Adapazarı merkez. lat/lng uydurma.",
+    args: [
+      { name: "hedef", type: "string", required: true, aciklama: "çarşı, adapazarı merkez, orta garaj, o. garaj" },
+      { name: "lat", type: "number", required: false, aciklama: "Boş bırak; oturum konumu kullanılır" },
+      { name: "lng", type: "number", required: false, aciklama: "Boş bırak; oturum konumu kullanılır" },
+      { name: "yari_cap_m", type: "number", required: false, aciklama: "Yürüme metre, varsayılan 600" },
     ],
   },
 ];
@@ -72,6 +94,26 @@ function num(v: unknown): number | null {
     return Number.isFinite(n) ? n : null;
   }
   return null;
+}
+
+function haversineM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371000;
+  const rad = (x: number) => (x * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLng = rad(b.lng - a.lng);
+  const s =
+    Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+
+const KONUM_KODLARI = new Set(["yakin_duraklar", "rota_oneri"]);
+
+function konumYok(): FnResult {
+  return {
+    ok: false,
+    error: "konum yok. Kullanıcıdan tarayıcı konum izni iste, sonra aynı soruyu tekrar yazmasını söyle.",
+    data: { konum_gerekli: true },
+  };
 }
 
 type GunKod = "haftaici" | "cumartesi" | "pazar";
@@ -144,6 +186,10 @@ async function resolveHat(ref: string) {
 
 async function otobusSorgula(args: Record<string, unknown>): Promise<FnResult> {
   const q = str(args.q) || undefined;
+  const yer = q ? eslesenYer(q) : null;
+  if (yer?.merkez && yer.yari_cap_m) {
+    return yerdenGecenHatlar({ yer: yer.soz });
+  }
   const filtre = q ? hatSearchClause(q, "h") : { sql: "", params: [] as string[] };
   const ozet = await query<RowDataPacket[]>(
     `SELECT h.id, h.kod, h.slug, h.ad, h.bus_type_name, h.last_ingested_at,
@@ -333,10 +379,66 @@ async function otobusSaatSorgula(args: Record<string, unknown>): Promise<FnResul
   };
 }
 
+async function yerdenGecenHatlar(args: Record<string, unknown>): Promise<FnResult> {
+  const raw = str(args.yer) || str(args.q);
+  const yer = eslesenYer(raw);
+  if (!yer?.merkez || !yer.yari_cap_m) {
+    return {
+      ok: false,
+      error: "bilinen yer yok. şimdilik: çarşı, adapazarı merkez, orta garaj, o. garaj",
+    };
+  }
+  return hatlarDairede(yer);
+}
+
+async function hatlarDairede(yer: YerKayit): Promise<FnResult> {
+  const { lat, lng } = yer.merkez!;
+  const cap = yer.yari_cap_m!;
+  const hatlar = await query<RowDataPacket[]>(
+    `SELECT h.kod, h.slug, h.ad, h.bus_type_name,
+            COUNT(DISTINCT d.id) AS merkez_durak,
+            MIN(ST_Distance_Sphere(POINT(d.lng, d.lat), POINT(?, ?))) AS min_m
+     FROM hatlar h
+     JOIN hat_duraklari hd ON hd.hat_id = h.id
+     JOIN duraklar d ON d.id = hd.durak_id
+     WHERE ST_Distance_Sphere(POINT(d.lng, d.lat), POINT(?, ?)) <= ?
+     GROUP BY h.id, h.kod, h.slug, h.ad, h.bus_type_name
+     ORDER BY merkez_durak DESC, min_m
+     LIMIT 80`,
+    [lng, lat, lng, lat, cap],
+  );
+  const duraklar = await query<RowDataPacket[]>(
+    `SELECT d.ad, MIN(ST_Distance_Sphere(POINT(d.lng, d.lat), POINT(?, ?))) AS min_m
+     FROM duraklar d
+     WHERE ST_Distance_Sphere(POINT(d.lng, d.lat), POINT(?, ?)) <= ?
+     GROUP BY d.ad
+     ORDER BY min_m
+     LIMIT 8`,
+    [lng, lat, lng, lat, cap],
+  );
+  return {
+    ok: true,
+    data: {
+      yer: { soz: yer.soz, anlam: yer.anlam, yari_cap_m: cap },
+      adet: hatlar.length,
+      not: "Bu dairenin içindeki duraklara uğrayan hatlar. Yolcuya hepsini okuma; konumuna göre 3–5 öner.",
+      durak_ornek: duraklar.map((d) => ({ ad: String(d.ad), mesafe_m: Math.round(Number(d.min_m)) })),
+      hatlar: hatlar.map((h) => ({
+        kod: String(h.kod),
+        slug: String(h.slug),
+        ad: String(h.ad),
+        tur: h.bus_type_name,
+        merkez_durak: Number(h.merkez_durak),
+        min_m: Math.round(Number(h.min_m)),
+      })),
+    },
+  };
+}
+
 async function yakinDuraklar(args: Record<string, unknown>): Promise<FnResult> {
   const lat = num(args.lat);
   const lng = num(args.lng);
-  if (lat == null || lng == null) return { ok: false, error: "lat ve lng gerekli" };
+  if (lat == null || lng == null) return konumYok();
   if (lat < 40.2 || lat > 41.2 || lng < 29.8 || lng > 31.2) {
     return { ok: false, error: "konum Sakarya civarında olmalı" };
   }
@@ -377,12 +479,129 @@ async function yakinDuraklar(args: Record<string, unknown>): Promise<FnResult> {
       adet: duraklar.length,
       duraklar: duraklar.map((d) => ({
         id: Number(d.id),
-        ad: d.ad,
+        ad: String(d.ad),
         lat: Number(d.lat),
         lng: Number(d.lng),
         mesafe_m: Math.round(Number(d.mesafe_m)),
         hatlar: hatlarByDurak.get(Number(d.id)) ?? [],
       })),
+    },
+  };
+}
+
+type YakinDurakOzet = { ad: string; mesafe_m: number; hatlar: { kod: string; ad: string }[] };
+
+function yakinDurakListesi(data: unknown): YakinDurakOzet[] {
+  if (!data || typeof data !== "object") return [];
+  const duraklar = (data as { duraklar?: unknown }).duraklar;
+  if (!Array.isArray(duraklar)) return [];
+  return duraklar.filter((d): d is YakinDurakOzet => {
+    if (!d || typeof d !== "object") return false;
+    const o = d as YakinDurakOzet;
+    return typeof o.ad === "string" && typeof o.mesafe_m === "number" && Array.isArray(o.hatlar);
+  });
+}
+
+function binisDuragi(kod: string, duraklar: YakinDurakOzet[]): { ad: string; mesafe_m: number } | null {
+  for (const d of duraklar) {
+    if (d.hatlar.some((h) => h.kod === kod)) return { ad: d.ad, mesafe_m: d.mesafe_m };
+  }
+  return null;
+}
+
+async function direktHatlar(opts: {
+  lat: number;
+  lng: number;
+  yer: YerKayit;
+  cap: number;
+}): Promise<RowDataPacket[]> {
+  const { lat, lng, yer, cap } = opts;
+  const dlat = yer.merkez!.lat;
+  const dlng = yer.merkez!.lng;
+  const dcap = yer.yari_cap_m!;
+  return query<RowDataPacket[]>(
+    `SELECT h.kod, h.slug, h.ad, h.bus_type_name,
+            MIN(ST_Distance_Sphere(POINT(d.lng, d.lat), POINT(?, ?))) AS binis_m
+     FROM hatlar h
+     JOIN hat_duraklari hd ON hd.hat_id = h.id
+     JOIN duraklar d ON d.id = hd.durak_id
+     WHERE ST_Distance_Sphere(POINT(d.lng, d.lat), POINT(?, ?)) <= ?
+       AND EXISTS (
+         SELECT 1
+         FROM hat_duraklari hd2
+         JOIN duraklar d2 ON d2.id = hd2.durak_id
+         WHERE hd2.hat_id = h.id
+           AND ST_Distance_Sphere(POINT(d2.lng, d2.lat), POINT(?, ?)) <= ?
+       )
+     GROUP BY h.id, h.kod, h.slug, h.ad, h.bus_type_name
+     ORDER BY binis_m
+     LIMIT 12`,
+    [lng, lat, lng, lat, cap, dlng, dlat, dcap],
+  );
+}
+
+async function rotaOneri(args: Record<string, unknown>): Promise<FnResult> {
+  const hedefRaw = str(args.hedef) || str(args.yer) || str(args.q);
+  const yer = eslesenYer(hedefRaw);
+  if (!yer?.merkez || !yer.yari_cap_m) {
+    return { ok: false, error: "bilinen yer yok. şimdilik: çarşı, adapazarı merkez, orta garaj, o. garaj" };
+  }
+  const lat = num(args.lat);
+  const lng = num(args.lng);
+  if (lat == null || lng == null) return konumYok();
+  if (lat < 40.2 || lat > 41.2 || lng < 29.8 || lng > 31.2) {
+    return { ok: false, error: "konum Sakarya civarında olmalı" };
+  }
+
+  const hedefM = Math.round(haversineM({ lat, lng }, yer.merkez));
+  if (hedefM <= yer.yari_cap_m) {
+    const yakin = await yakinDuraklar({ lat, lng, yari_cap_m: 600 });
+    return {
+      ok: true,
+      data: {
+        zaten_hedefte: true,
+        hedef: { soz: yer.soz, anlam: yer.anlam, mesafe_m: hedefM },
+        not: "Kullanıcı zaten bu dairenin içinde. Direkt hat önerme; yakın durakları söyle.",
+        yakin: yakin.ok ? yakin.data : null,
+      },
+    };
+  }
+
+  const istenen = Math.min(1500, Math.max(50, num(args.yari_cap_m) ?? 600));
+  const tryCaps = [...new Set([istenen, 600, 900, 1200])].sort((a, b) => a - b);
+  let kullanilan = tryCaps[0] ?? 600;
+  let rows: RowDataPacket[] = [];
+  for (const cap of tryCaps) {
+    kullanilan = cap;
+    rows = await direktHatlar({ lat, lng, yer, cap });
+    if (rows.length) break;
+  }
+
+  const yakin = await yakinDuraklar({ lat, lng, yari_cap_m: kullanilan });
+  const duraklar = yakinDurakListesi(yakin.data).slice(0, 8);
+
+  return {
+    ok: true,
+    data: {
+      zaten_hedefte: false,
+      hedef: { soz: yer.soz, anlam: yer.anlam, yari_cap_m: yer.yari_cap_m, mesafe_m: hedefM },
+      yari_cap_m: kullanilan,
+      direkt_adet: rows.length,
+      direkt: rows.map((h) => {
+        const kod = String(h.kod);
+        return {
+          kod,
+          slug: String(h.slug),
+          ad: String(h.ad),
+          tur: h.bus_type_name,
+          binis_m: Math.round(Number(h.binis_m)),
+          binis: binisDuragi(kod, duraklar),
+        };
+      }),
+      yakin_duraklar: duraklar,
+      not: rows.length
+        ? "Bu hatlar hem yürüme dairesindeki duraktan hem hedeften geçer. Yolcuya 3–5 öner; binis durağını söyle."
+        : "Yakın duraklardan hedefe direkt hat yok. 1 aktarma henüz yok; uydurma. Yakın durakları söyle.",
     },
   };
 }
@@ -393,6 +612,8 @@ const HANDLERS: Record<string, (args: Record<string, unknown>) => Promise<FnResu
   otobus_anlik_konum_sorgula: otobusAnlikKonum,
   otobus_saat_sorgula: otobusSaatSorgula,
   yakin_duraklar: yakinDuraklar,
+  yerden_gecen_hatlar: yerdenGecenHatlar,
+  rota_oneri: rotaOneri,
 };
 
 export function fonksiyonVar(kod: string): boolean {
@@ -425,13 +646,18 @@ export async function calistirFonksiyon(
   const fn = HANDLERS[kod];
   if (!fn) return { ok: false, error: `fonksiyon yok: ${kod}` };
   const t0 = Date.now();
+  let filled = args ?? {};
+  if (KONUM_KODLARI.has(kod) && meta?.oturumId) {
+    const o = await oturumKonumu(meta.oturumId);
+    if (o) filled = { ...filled, lat: o.lat, lng: o.lng };
+  }
   let result: FnResult;
   try {
-    result = await fn(args ?? {});
+    result = await fn(filled);
   } catch (e) {
     result = { ok: false, error: String((e as Error).message) };
   }
-  const ozet = { ...args };
+  const ozet = { ...filled };
   if ("lat" in ozet && typeof ozet.lat === "number") ozet.lat = Math.round(ozet.lat * 1000) / 1000;
   if ("lng" in ozet && typeof ozet.lng === "number") ozet.lng = Math.round(ozet.lng * 1000) / 1000;
   try {

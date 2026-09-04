@@ -41,9 +41,9 @@ const SENARYOLAR = [
     kisa: "Sefer saatleri",
     ozet: "Sonraki otobüs ne zaman",
     icon: IconClock,
-    prompt: "5 numaranın saatleri nelerdir?",
+    prompt: "6 numaranın saatleri nelerdir?",
     turns: [
-      { rol: "user" as const, icerik: "5 numaranın saatleri nelerdir?" },
+      { rol: "user" as const, icerik: "6 numaranın saatleri nelerdir?" },
       {
         rol: "assistant" as const,
         icerik:

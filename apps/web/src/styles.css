@@ -264,6 +264,12 @@ html.embed, html.embed body, html.embed #root {
   background: color-mix(in srgb, currentColor 12%, transparent);
 }
 .hint, .muted { color: var(--muted); }
+.chat-konum-hint {
+  margin: 0;
+  padding: 0 10px 8px;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
 .err { color: var(--danger); }
 .banner { background: #fff3c4; border-radius: 12px; padding: 10px 12px; }
 .embed-page { background: transparent; }

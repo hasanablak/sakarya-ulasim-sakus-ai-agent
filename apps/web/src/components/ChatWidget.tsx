@@ -1,19 +1,21 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { DEFAULT_WEBCHAT_TEMA, type WebchatPublic } from "@sakus/shared";
 import { api, getSessionId, setSessionId, type ChatMessage } from "../api";
+import { baslatKonumIstegi, konumHint } from "../konum";
 import { ChatMd } from "./ChatMd";
 import { ChatShell } from "./ChatShell";
 
 export const ORNEK_CUMLELER = [
   "Şu an bana en yakın hatlar neler?",
   "Çarşıya nasıl giderim?",
-  "5 numaranın saatleri nelerdir?",
+  "6 numaranın saatleri nelerdir?",
   "20 numara şu anda tam olarak nerede?",
 ];
 
 const ORNEK_SOR_OLAY = "sakus-ornek-sor";
 
 export function ornekSor(text: string) {
+  void baslatKonumIstegi();
   window.dispatchEvent(new CustomEvent(ORNEK_SOR_OLAY, { detail: text }));
 }
 
@@ -40,6 +42,8 @@ export function ChatWidget({ slug, embed, host }: { slug?: string; embed?: boole
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [konumBekliyor, setKonumBekliyor] = useState(false);
+  const [konumUyari, setKonumUyari] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -103,14 +107,19 @@ export function ChatWidget({ slug, embed, host }: { slug?: string; embed?: boole
     };
     setMessages((cur) => [...cur, yerel]);
     setBusy(true);
+    setKonumBekliyor(true);
     setError(null);
     setText("");
     try {
-      const origin = await readOrigin();
+      const konum = await baslatKonumIstegi();
+      setKonumBekliyor(false);
+      if (konum.ok) setKonumUyari(null);
+      else setKonumUyari(konumHint(konum.neden));
       const data = await api.chatSend({
         sessionId: getSessionId(cfg.embed_key || cfg.slug, host) ?? undefined,
         message,
-        origin,
+        origin: konum.ok ? konum.konum : undefined,
+        konum_durum: konum.ok ? "var" : konum.neden,
         webchatSlug: cfg.slug,
         webchatKey: cfg.embed_key || undefined,
         host: host || window.location.origin,
@@ -121,6 +130,7 @@ export function ChatWidget({ slug, embed, host }: { slug?: string; embed?: boole
     } catch (err) {
       setError(String((err as Error).message));
     } finally {
+      setKonumBekliyor(false);
       setBusy(false);
     }
   }
@@ -143,13 +153,20 @@ export function ChatWidget({ slug, embed, host }: { slug?: string; embed?: boole
     void sendMessage(text);
   }
 
+  function toggleOpen() {
+    setOpen((v) => {
+      if (!v) void baslatKonumIstegi();
+      return !v;
+    });
+  }
+
   if (!cfg) return null;
 
   return (
     <ChatShell
       cfg={cfg}
       open={open}
-      onToggle={() => setOpen((v) => !v)}
+      onToggle={toggleOpen}
       logRef={scroller}
       dockRef={dockRef}
       embed={embed}
@@ -167,6 +184,7 @@ export function ChatWidget({ slug, embed, host }: { slug?: string; embed?: boole
               </button>
             ))}
           </div>
+          {konumUyari && <p className="hint chat-konum-hint">{konumUyari}</p>}
           <form onSubmit={send}>
             <input
               value={text}
@@ -189,7 +207,7 @@ export function ChatWidget({ slug, embed, host }: { slug?: string; embed?: boole
       ))}
       {busy && (
         <div className="bubble assistant is-typing" aria-live="polite">
-          <span className="chat-typing">Asistan yazıyor</span>
+          <span className="chat-typing">{konumBekliyor ? "Konum alınıyor" : "Asistan yazıyor"}</span>
         </div>
       )}
       {error && <p className="err">{error}</p>}
@@ -199,15 +217,4 @@ export function ChatWidget({ slug, embed, host }: { slug?: string; embed?: boole
 
 function visibleChat(rows: ChatMessage[]) {
   return rows.filter((m) => (m.rol === "user" || m.rol === "assistant") && m.icerik?.trim());
-}
-
-function readOrigin(): Promise<{ lat: number; lng: number } | undefined> {
-  if (!navigator.geolocation) return Promise.resolve(undefined);
-  return new Promise((resolve) => {
-    navigator.geolocation.getCurrentPosition(
-      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
-      () => resolve(undefined),
-      { timeout: 2500, maximumAge: 60_000 },
-    );
-  });
 }

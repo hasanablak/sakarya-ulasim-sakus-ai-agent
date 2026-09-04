@@ -1,0 +1,128 @@
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { api } from "../../api";
+import { HatlarOzet, type HatOzetData } from "./HatlarOzet";
+import { IngestBanner } from "./IngestBanner";
+
+type Hat = {
+  id: number;
+  kod: string;
+  slug: string;
+  ad: string;
+  bus_type_name: string | null;
+  last_ingested_at: string | null;
+};
+
+type Job = {
+  id: number;
+  status: string;
+  error_text: string | null;
+  progress_json: { line?: string } | string | null;
+  started_at: string | null;
+  finished_at: string | null;
+};
+
+export function HatlarPage() {
+  const [hatlar, setHatlar] = useState<Hat[]>([]);
+  const [q, setQ] = useState("");
+  const [live, setLive] = useState<string[]>([]);
+  const [ingestRunning, setIngestRunning] = useState(false);
+  const [scraperUp, setScraperUp] = useState(true);
+  const [lastJob, setLastJob] = useState<Job | null>(null);
+  const [ozet, setOzet] = useState<HatOzetData | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function load() {
+    const data = await api.adminHatlar(q || undefined);
+    setHatlar(data.hatlar ?? []);
+    setLive(data.live ?? []);
+    setIngestRunning(Boolean(data.ingestRunning));
+    setScraperUp(data.scraperUp !== false);
+    setLastJob(data.lastJob ?? null);
+    setOzet(data.ozet ?? null);
+  }
+
+  useEffect(() => {
+    load().catch((e) => setMsg(String(e.message)));
+  }, []);
+
+  useEffect(() => {
+    if (!ingestRunning && lastJob?.status !== "running") return;
+    const t = setInterval(() => {
+      load().catch(() => undefined);
+    }, 2000);
+    return () => clearInterval(t);
+  }, [ingestRunning, lastJob?.status]);
+
+  return (
+    <div>
+      <header className="page-head">
+        <div>
+          <h1>Otobüs hatları</h1>
+          <p>{hatlar.length} hat kayıtlı. Canlı: {live.length ? live.join(", ") : "yok"}</p>
+        </div>
+        <div className="row">
+          <button
+            type="button"
+            disabled={ingestRunning || !scraperUp}
+            onClick={async () => {
+              setMsg(null);
+              try {
+                const r = await api.ingest({});
+                setMsg(`İş #${r.jobId} kuyruğa alındı. Puppeteer SAKUS’tan çekiyor.`);
+                setIngestRunning(true);
+              } catch (e) {
+                setMsg(String((e as Error).message));
+              }
+            }}
+          >
+            Tüm hatları SAKUS’tan çek
+          </button>
+        </div>
+      </header>
+      {lastJob && <IngestBanner job={lastJob} />}
+      {ozet && <HatlarOzet ozet={ozet} liveCount={live.length} scraperUp={scraperUp} />}
+      {msg && lastJob?.status !== "running" && <p className="banner">{msg}</p>}
+      {!scraperUp && (
+        <p className="err">Puppeteer konteyneri kapalı. `docker compose up -d --build scraper` çalıştır.</p>
+      )}
+      <form
+        className="row"
+        onSubmit={(e) => {
+          e.preventDefault();
+          load().catch((err) => setMsg(String(err.message)));
+        }}
+      >
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Kod, ad, slug ara" />
+        <button type="submit">Ara</button>
+      </form>
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Kod</th>
+            <th>Ad</th>
+            <th>Son çekim</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {hatlar.map((h) => (
+            <tr key={h.id}>
+              <td>
+                <strong>{h.kod}</strong>
+              </td>
+              <td>
+                {h.ad}
+                <div className="muted">{h.bus_type_name}</div>
+              </td>
+              <td className="muted">{h.last_ingested_at ? new Date(h.last_ingested_at).toLocaleString("tr-TR") : "—"}</td>
+              <td>
+                <Link to={`/admin/hatlar/${h.slug}`}>Detay</Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

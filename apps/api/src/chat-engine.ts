@@ -13,10 +13,10 @@ import {
   type PublicMesaj,
 } from "./chat-store.js";
 import { completeLlm, llmDestekleniyor, type LlmMessage, type LlmToolCall } from "./llm.js";
-import { resolveWiroCreds } from "./wiro.js";
 import { listHatlar } from "./jobs.js";
 import { calistirFonksiyon, fonksiyonVar } from "./tool-functions.js";
 import { getPublicWebchat } from "./webchat-store.js";
+import { yerSozluguPrompt } from "./yer-sozlugu.js";
 import { query } from "./db.js";
 import type { RowDataPacket } from "mysql2";
 
@@ -27,7 +27,10 @@ const TOOL_JSON_CAP = 6000;
 const TABAN_SISTEM =
   "Sen Sakarya Büyükşehir Belediyesi toplu taşıma asistanısın. Yanıtların Türkçe, kısa ve yolcuya yönelik olsun. " +
   "Tool sonuçlarındaki ham JSON’u olduğu gibi yapıştırma; özetle. Bilmediğin hat, saat veya konumu uydurma. " +
-  "Yakın durak için yakin_duraklar tool’unu kullan. SAKUS haritası veya belediye sitesine yönlendirebilirsin.";
+  "Yakın durak için yakin_duraklar tool’unu kullan. SAKUS haritası veya belediye sitesine yönlendirebilirsin. " +
+  "“En yakın sefer” listedeki ilk sabah saati değil, Türkiye saatine göre şu andan SONRAKİ kalkıştır. " +
+  "otobus_saat_sorgula çıktısındaki sonraki / yaklasan / simdi alanlarını kullan; bugün bittiyse yarını söyle.\n" +
+  yerSozluguPrompt();
 
 export async function handleChatTurn(input: {
   sessionId?: string;
@@ -118,7 +121,7 @@ async function produceReply(opts: {
     return;
   }
 
-  if (!agent.api_token && agent.llm_saglayici !== "wiro") {
+  if (!agent.api_token) {
     await insertMesaj(
       sessionId,
       "assistant",
@@ -128,21 +131,11 @@ async function produceReply(opts: {
     return;
   }
 
-  if (agent.llm_saglayici === "wiro" && !resolveWiroCreds(agent.api_token)) {
-    await insertMesaj(
-      sessionId,
-      "assistant",
-      "Wiro anahtarı veya sırrı yok. .env içine WIRO_API_KEY ve WIRO_API_SECRET yaz, veya agent token alanına API key koy.",
-      { kind: "assistant", ok: false, neden: "wiro_creds", agent_id: agent.id },
-    );
-    return;
-  }
-
   if (!llmDestekleniyor(agent.llm_saglayici)) {
     await insertMesaj(
       sessionId,
       "assistant",
-      "Bu agent desteklenmeyen bir LLM kullanıyor. Yönetim panelinden OpenAI, Claude, Gemini, Groq veya Wiro seç.",
+      "Bu agent desteklenmeyen bir LLM kullanıyor. Yönetim panelinden OpenAI, Claude, Gemini, Groq veya OpenRouter seç.",
       { kind: "assistant", ok: false, neden: "saglayici", llm_saglayici: agent.llm_saglayici, agent_id: agent.id },
     );
     return;
@@ -160,7 +153,6 @@ async function produceReply(opts: {
       token: agent.api_token ?? "",
       messages,
       tools: agent.tools,
-      sessionId,
     });
     const llmMs = Date.now() - stepT;
 
@@ -170,11 +162,13 @@ async function produceReply(opts: {
         content: completion.content,
         tool_calls: completion.tool_calls,
         extra_content: completion.extra_content,
+        reasoning_details: completion.reasoning_details,
       });
       await insertMesaj(sessionId, "assistant", completion.content ?? "", {
         kind: "tool_calls",
         tool_calls: completion.tool_calls,
         extra_content: completion.extra_content ?? null,
+        reasoning_details: completion.reasoning_details ?? null,
         llm_saglayici: agent.llm_saglayici,
         model: agent.model,
         sure_ms: llmMs,
@@ -254,8 +248,17 @@ async function buildLlmMessages(
     origin && Number.isFinite(origin.lat) && Number.isFinite(origin.lng)
       ? `Kullanıcının tarayıcı konumu (yaklaşık): ${origin.lat.toFixed(5)}, ${origin.lng.toFixed(5)}.`
       : "Kullanıcı konum paylaşmamış olabilir.";
+  const simdi = new Intl.DateTimeFormat("tr-TR", {
+    timeZone: "Europe/Istanbul",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date());
   const messages: LlmMessage[] = [
-    { role: "system", content: `${sistemPrompt.trim()}\n\n${TABAN_SISTEM}\n${loc}` },
+    { role: "system", content: `${sistemPrompt.trim()}\n\n${TABAN_SISTEM}\nŞu an Türkiye: ${simdi}.\n${loc}` },
   ];
   const rows = await listLlmGecmisi(sessionId, 36);
   for (const r of rows) {
@@ -282,6 +285,7 @@ function rowToLlm(r: RowDataPacket): LlmMessage | null {
       meta?.extra_content && typeof meta.extra_content === "object" && !Array.isArray(meta.extra_content)
         ? (meta.extra_content as Record<string, unknown>)
         : undefined;
+    const reasoning_details = meta?.reasoning_details;
     const tool_calls: LlmToolCall[] = Array.isArray(rawCalls)
       ? rawCalls
           .map((tc) => {
@@ -307,6 +311,7 @@ function rowToLlm(r: RowDataPacket): LlmMessage | null {
       content: icerik.trim() ? icerik : null,
       tool_calls: tool_calls.length ? tool_calls : undefined,
       extra_content,
+      ...(reasoning_details != null ? { reasoning_details } : {}),
     };
   }
   return null;

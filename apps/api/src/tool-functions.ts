@@ -23,7 +23,7 @@ export const FONKSIYONLAR: FonksiyonTanim[] = [
     kod: "otobus_sorgula",
     ad: "Otobüs sorgula",
     aciklama: "Kayıtlı hatların özetini toplu döner (kod, ad, durak/sefer/araç sayısı).",
-    args: [{ name: "q", type: "string", required: false, aciklama: "Kod, ad veya slug filtresi" }],
+    args: [{ name: "q", type: "string", required: false, aciklama: "Kod, ad, slug veya yer; Çarşı = Adapazarı merkez" }],
   },
   {
     kod: "otobus_guzergah_sorgula",
@@ -40,7 +40,8 @@ export const FONKSIYONLAR: FonksiyonTanim[] = [
   {
     kod: "otobus_saat_sorgula",
     ad: "Otobüs saat sorgula",
-    aciklama: "Hattın hareket saatleri (kalkış/varış). gun_kod: haftaici, cumartesi, pazar.",
+    aciklama:
+      "Hattın hareket saatleri. Türkiye saatine göre her yön için sonraki seferi ve kalan dakikayı da döner. gun_kod: haftaici, cumartesi, pazar.",
     args: [
       { name: "hat", type: "string", required: true, aciklama: "Hat kodu veya slug" },
       { name: "gun_kod", type: "string", required: false, aciklama: "haftaici | cumartesi | pazar" },
@@ -73,11 +74,57 @@ function num(v: unknown): number | null {
   return null;
 }
 
-function todayGunKod(): "haftaici" | "cumartesi" | "pazar" {
-  const wd = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Istanbul", weekday: "short" }).format(new Date());
+type GunKod = "haftaici" | "cumartesi" | "pazar";
+
+function gunKodFromWd(wd: string): GunKod {
   if (wd === "Sat") return "cumartesi";
   if (wd === "Sun") return "pazar";
   return "haftaici";
+}
+
+function istanbulSaat() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Istanbul",
+    weekday: "short",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const g = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const y = Number(g("year"));
+  const mo = Number(g("month"));
+  const d = Number(g("day"));
+  const yarin = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Istanbul",
+    weekday: "short",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(Date.UTC(y, mo - 1, d + 1, 12)));
+  const yg = (t: string) => yarin.find((p) => p.type === t)?.value ?? "";
+  return {
+    saat: `${g("hour")}:${g("minute")}`,
+    tarih: `${g("year")}-${g("month")}-${g("day")}`,
+    gunKod: gunKodFromWd(g("weekday")),
+    yarinGunKod: gunKodFromWd(yg("weekday")),
+    yarinTarih: `${yg("year")}-${yg("month")}-${yg("day")}`,
+  };
+}
+
+function todayGunKod(): GunKod {
+  return istanbulSaat().gunKod;
+}
+
+function fmtSaat(raw: unknown): string {
+  return String(raw ?? "").slice(0, 5);
+}
+
+function saatDakika(raw: string): number {
+  const [h, m] = fmtSaat(raw).split(":").map(Number);
+  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
 }
 
 function staleOf(updatedAt: Date | string | null): boolean {
@@ -218,35 +265,70 @@ async function otobusAnlikKonum(args: Record<string, unknown>): Promise<FnResult
   };
 }
 
+type SeferSatir = { kalkis: string; varis: string | null; sefer: number | null };
+
+async function hatSeferleri(hatId: number, gun: string): Promise<Map<string, SeferSatir[]>> {
+  const rows = await query<RowDataPacket[]>(
+    `SELECT sakus_route_id, yon_ad, gun_kod, sefer_no, kalkis, varis
+     FROM hat_seferleri WHERE hat_id = ? AND gun_kod = ?
+     ORDER BY sakus_route_id, kalkis`,
+    [hatId, gun],
+  );
+  const byYon = new Map<string, SeferSatir[]>();
+  for (const r of rows) {
+    const yon = String(r.yon_ad);
+    if (!byYon.has(yon)) byYon.set(yon, []);
+    byYon.get(yon)!.push({
+      kalkis: fmtSaat(r.kalkis),
+      varis: r.varis != null ? fmtSaat(r.varis) : null,
+      sefer: r.sefer_no != null ? Number(r.sefer_no) : null,
+    });
+  }
+  return byYon;
+}
+
 async function otobusSaatSorgula(args: Record<string, unknown>): Promise<FnResult> {
   const hatRef = str(args.hat);
   if (!hatRef) return { ok: false, error: "hat gerekli" };
   const hat = await resolveHat(hatRef);
   if (!hat) return { ok: false, error: `hat bulunamadı: ${hatRef}` };
-  const gun = str(args.gun_kod) || todayGunKod();
-  const rows = await query<RowDataPacket[]>(
-    `SELECT sakus_route_id, yon_ad, gun_kod, sefer_no, kalkis, varis
-     FROM hat_seferleri WHERE hat_id = ? AND gun_kod = ?
-     ORDER BY sakus_route_id, kalkis`,
-    [hat.id, gun],
-  );
-  const byYon = new Map<string, { kalkis: string; varis: string | null; sefer: number | null }[]>();
-  for (const r of rows) {
-    const yon = String(r.yon_ad);
-    if (!byYon.has(yon)) byYon.set(yon, []);
-    byYon.get(yon)!.push({
-      kalkis: String(r.kalkis).slice(0, 8),
-      varis: r.varis != null ? String(r.varis).slice(0, 8) : null,
-      sefer: r.sefer_no != null ? Number(r.sefer_no) : null,
-    });
-  }
+  const saat = istanbulSaat();
+  const gun = (str(args.gun_kod) as GunKod) || saat.gunKod;
+  const byYon = await hatSeferleri(hat.id, gun);
+  const ayniGun = gun === saat.gunKod;
+  const simdiDk = saatDakika(saat.saat);
+  const yarinByYon = ayniGun ? await hatSeferleri(hat.id, saat.yarinGunKod) : null;
+
+  const yonler = [...byYon.entries()].map(([yon, seferler]) => {
+    const yaklasan = ayniGun ? seferler.filter((s) => saatDakika(s.kalkis) >= simdiDk) : seferler;
+    const sonrakiBugun = yaklasan[0] ?? null;
+    const yarinIlk = !sonrakiBugun && yarinByYon ? (yarinByYon.get(yon)?.[0] ?? null) : null;
+    const sonraki = sonrakiBugun
+      ? { ...sonrakiBugun, gun: "bugun" as const, kalan_dk: saatDakika(sonrakiBugun.kalkis) - simdiDk }
+      : yarinIlk
+        ? { ...yarinIlk, gun: "yarin" as const, gun_kod: saat.yarinGunKod, tarih: saat.yarinTarih, kalan_dk: null }
+        : null;
+    return {
+      yon,
+      sonraki,
+      yaklasan: yaklasan.slice(0, 6),
+      sefer_sayisi: seferler.length,
+      seferler,
+    };
+  });
+
+  const seferYok = yonler.every((y) => y.sefer_sayisi === 0);
   return {
     ok: true,
     data: {
       hat: { kod: hat.kod, ad: hat.ad, slug: hat.slug },
+      simdi: saat.saat,
+      tarih: saat.tarih,
       gun_kod: gun,
-      yonler: [...byYon.entries()].map(([yon, seferler]) => ({ yon, seferler })),
-      uyari: rows.length === 0 ? "Bu gün için sefer yok veya saatler henüz çekilmedi." : null,
+      yonler,
+      uyari: seferYok
+        ? "Bu gün için sefer yok veya saatler henüz çekilmedi."
+        : "en yakın = sonraki (şu andan sonra). bugün bittiyse gun=yarin.",
     },
   };
 }

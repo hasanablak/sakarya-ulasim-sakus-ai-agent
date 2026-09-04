@@ -1,6 +1,7 @@
 import type { NormalizedVehicle } from "@sakus/shared";
 import { apiConfig } from "./config.js";
 import { exec, query } from "./db.js";
+import { genisletAramaToken } from "./yer-sozlugu.js";
 import type { RowDataPacket } from "mysql2";
 
 async function scraperRequest(path: string, init?: RequestInit): Promise<Response> {
@@ -188,9 +189,13 @@ export function hatSearchClause(q: string, alias = ""): { sql: string; params: s
   const clauses: string[] = [];
   const params: string[] = [];
   for (const t of parts) {
-    clauses.push(`(${col("kod")} LIKE ? OR ${col("ad")} LIKE ? OR ${col("slug")} LIKE ?)`);
-    const like = `%${t}%`;
-    params.push(like, like, like);
+    const terimler = genisletAramaToken(t);
+    const orlar = terimler.map(() => `(${col("kod")} LIKE ? OR ${col("ad")} LIKE ? OR ${col("slug")} LIKE ?)`);
+    clauses.push(orlar.length > 1 ? `(${orlar.join(" OR ")})` : orlar[0]!);
+    for (const terim of terimler) {
+      const like = `%${terim}%`;
+      params.push(like, like, like);
+    }
   }
   return { sql: clauses.join(" AND ") || "1=0", params };
 }

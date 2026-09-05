@@ -29,6 +29,12 @@ export function setSessionId(id: string, slug = "public", host?: string): void {
 
 async function parse(res: Response) {
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && data.error === "admin yetkisi gerekli") {
+    setAdminToken(null);
+    if (typeof window !== "undefined" && window.location.pathname.startsWith("/admin") && !window.location.pathname.startsWith("/admin/login")) {
+      window.location.assign("/admin/login");
+    }
+  }
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
 }

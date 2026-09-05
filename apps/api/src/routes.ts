@@ -1,7 +1,7 @@
-import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { RowDataPacket } from "mysql2";
 import type { AracKonumPayload, SakusLineListItem, SakusRouteAndStops, ScheduleDayPayload } from "@sakus/shared";
+import { isAdminToken, issueAdminToken } from "./admin-auth.js";
 import { apiConfig } from "./config.js";
 import { query } from "./db.js";
 import { upsertHatIngest } from "./ingest-store.js";
@@ -22,8 +22,6 @@ import { handleChatTurn } from "./chat-engine.js";
 import { getOturumDetay, listOturumlar, listPublicMesajlar } from "./chat-store.js";
 import { publicIo } from "./socket.js";
 
-const adminTokens = new Set<string>();
-
 function internalOk(req: FastifyRequest): boolean {
   return req.headers["x-internal-secret"] === apiConfig.internalSecret;
 }
@@ -31,7 +29,7 @@ function internalOk(req: FastifyRequest): boolean {
 function adminOk(req: FastifyRequest): boolean {
   const header = req.headers.authorization;
   const token = header?.startsWith("Bearer ") ? header.slice(7) : undefined;
-  return Boolean(token && adminTokens.has(token));
+  return isAdminToken(token);
 }
 
 async function requireAdmin(req: FastifyRequest, reply: FastifyReply): Promise<boolean> {
@@ -100,9 +98,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         error: "şifre hatalı — geliştirme varsayılanı: admin (MySQL şifresi sakus değil)",
       });
     }
-    const token = randomUUID();
-    adminTokens.add(token);
-    return { ok: true, token };
+    return { ok: true, token: issueAdminToken() };
   });
 
   app.get("/api/admin/hatlar", async (req, reply) => {

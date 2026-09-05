@@ -91,7 +91,8 @@ export function HatSaatleri({ slug, seferler }: { slug: string; seferler: Sefer[
             : `${GUN_AD[gun] ?? gun} için sefer yok.`}
         </p>
       ) : (
-        routes.map(([routeId, yon]) => {
+        <div className={cx("grid grid-cols-1 gap-4 p-4", routes.length > 1 && "md:grid-cols-2")}>
+          {routes.map(([routeId, yon]) => {
           const trips = rows.filter((r) => r.sakus_route_id === routeId);
           const nextTime =
             gun === today
@@ -104,9 +105,11 @@ export function HatSaatleri({ slug, seferler }: { slug: string; seferler: Sefer[
                 }, null)
               : null;
           return (
-            <div key={`${gun}-${routeId}`} className="px-4 pb-4 pt-1">
-              <h3 className="mt-3.5 text-base font-semibold text-zinc-900 dark:text-zinc-50">{yon}</h3>
-              <div className={cx(tableWrap, "mt-2")}>
+            <div key={`${gun}-${routeId}`} className={cx(tableWrap, "flex min-h-0 flex-col")}>
+              <h3 className="border-b border-zinc-200 px-4 py-3 text-sm font-semibold text-zinc-900 dark:border-zinc-800 dark:text-zinc-50">
+                {yon}
+              </h3>
+              <div className="max-h-[min(420px,50vh)] overflow-auto">
                 <table className={tableCls}>
                   <thead>
                     <tr>
@@ -138,7 +141,8 @@ export function HatSaatleri({ slug, seferler }: { slug: string; seferler: Sefer[
               </div>
             </div>
           );
-        })
+          })}
+        </div>
       )}
     </section>
   );

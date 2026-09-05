@@ -244,8 +244,8 @@ export function HatMap({
   const empty = routes.length === 0 && stops.length === 0;
 
   return (
-    <section className={cx(cardShell, "relative overflow-hidden")}>
-      <div className="flex flex-wrap gap-2 border-b border-zinc-200 p-3 dark:border-zinc-800">
+    <section className={cx(cardShell, "relative flex h-full min-h-0 flex-col overflow-hidden")}>
+      <div className="flex shrink-0 flex-wrap gap-2 border-b border-zinc-200 p-3 dark:border-zinc-800">
         <button type="button" className={active === "all" ? btnPrimary : btnSecondary} onClick={() => setActive("all")}>
           Tüm yönler
         </button>
@@ -261,7 +261,7 @@ export function HatMap({
           </button>
         ))}
       </div>
-      <div className="hat-map h-[min(520px,62vh)] w-full" ref={wrapRef} />
+      <div className="hat-map min-h-0 w-full flex-1" ref={wrapRef} />
       {empty && (
         <p className="absolute bottom-4 left-4 z-[500] m-0 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50">
           Bu hat için güzergah veya durak geometrisi yok.

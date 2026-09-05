@@ -275,6 +275,8 @@ html.embed, html.embed body, html.embed #root {
 .embed-page { background: transparent; }
 
 .hat-map.leaflet-container {
+  width: 100%;
+  height: 100%;
   background: #f4f4f5;
   font-family: ui-sans-serif, system-ui, sans-serif;
 }

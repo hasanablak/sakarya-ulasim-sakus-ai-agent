@@ -9,7 +9,7 @@ import {
   btnDanger,
   btnPrimary,
   btnSecondary,
-  cardCls,
+  cardShell,
   cx,
   linkCls,
   muted,
@@ -152,15 +152,47 @@ export function HatDetayPage() {
         <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-500">{msg}</p>
       )}
 
-      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Güzergah haritası</h2>
-      <HatMap
-        key={hat.slug}
-        routes={data.routes ?? []}
-        stops={data.stops ?? []}
-        vehicles={vehicles}
-        hatColor={hat.bus_type_color}
-        focusStop={focusStop}
-      />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-4 lg:h-[min(560px,70vh)]">
+        <div className="h-[min(480px,55vh)] min-h-0 lg:col-span-3 lg:h-full">
+          <HatMap
+            key={hat.slug}
+            routes={data.routes ?? []}
+            stops={data.stops ?? []}
+            vehicles={vehicles}
+            hatColor={hat.bus_type_color}
+            focusStop={focusStop}
+          />
+        </div>
+        <section className={cx(cardShell, "flex h-[min(480px,55vh)] min-h-0 flex-col overflow-hidden lg:h-full")}>
+          <h2 className="shrink-0 border-b border-zinc-200 px-4 py-3 text-sm font-semibold text-zinc-900 dark:border-zinc-800 dark:text-zinc-50">
+            Güzergah durakları
+          </h2>
+          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            {(data.routes ?? []).length === 0 ? (
+              <p className={cx(muted, "px-1 py-2 text-sm")}>Bu hat için durak kaydı yok.</p>
+            ) : (
+              (data.routes ?? []).map((r) => (
+                <div key={r.sakus_route_id} className="mb-4 last:mb-0">
+                  <h3 className="mb-1.5 px-1 text-xs font-medium uppercase tracking-wide text-zinc-500">{r.yon_ad}</h3>
+                  <ol className="list-decimal space-y-0.5 pl-5">
+                    {(data.stops ?? [])
+                      .filter((s) => s.sakus_route_id === r.sakus_route_id)
+                      .map((s) => (
+                        <li
+                          key={`${r.sakus_route_id}-${s.id}`}
+                          className="-ml-1.5 cursor-pointer rounded-lg px-1.5 py-1 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                          onClick={() => setFocusStop({ lat: Number(s.lat), lng: Number(s.lng), ad: s.ad })}
+                        >
+                          <span className="text-sm text-zinc-900 dark:text-zinc-50">{s.ad}</span>
+                        </li>
+                      ))}
+                  </ol>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      </div>
 
       <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Hareket saatleri</h2>
       <HatSaatleri slug={hat.slug} seferler={data.seferler ?? []} />
@@ -203,29 +235,6 @@ export function HatDetayPage() {
           </tbody>
         </table>
       </div>
-
-      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Güzergah durakları</h2>
-      {(data.routes ?? []).map((r) => (
-        <section key={r.sakus_route_id} className={cardCls}>
-          <h3 className="mb-3 text-base font-semibold text-zinc-900 dark:text-zinc-50">{r.yon_ad}</h3>
-          <ol className="list-decimal space-y-1 pl-5">
-            {(data.stops ?? [])
-              .filter((s) => s.sakus_route_id === r.sakus_route_id)
-              .map((s) => (
-                <li
-                  key={`${r.sakus_route_id}-${s.id}`}
-                  className="-ml-1.5 cursor-pointer rounded-lg px-1.5 py-1 hover:bg-zinc-50 dark:hover:bg-zinc-800"
-                  onClick={() => setFocusStop({ lat: Number(s.lat), lng: Number(s.lng), ad: s.ad })}
-                >
-                  <span className="text-zinc-900 dark:text-zinc-50">{s.ad}</span>
-                  <em className="block text-sm not-italic text-zinc-500">
-                    {Number(s.lat).toFixed(5)}, {Number(s.lng).toFixed(5)}
-                  </em>
-                </li>
-              ))}
-          </ol>
-        </section>
-      ))}
     </div>
   );
 }

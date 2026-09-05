@@ -245,15 +245,15 @@ export function HatMap({
 
   return (
     <section className={cx(cardShell, "relative flex h-full min-h-0 flex-col overflow-hidden")}>
-      <div className="flex shrink-0 flex-wrap gap-2 border-b border-zinc-200 p-3 dark:border-zinc-800">
-        <button type="button" className={active === "all" ? btnPrimary : btnSecondary} onClick={() => setActive("all")}>
+      <div className="flex shrink-0 gap-2 overflow-x-auto overscroll-x-contain border-b border-zinc-200 p-3 dark:border-zinc-800">
+        <button type="button" className={cx(active === "all" ? btnPrimary : btnSecondary, "shrink-0 whitespace-nowrap")} onClick={() => setActive("all")}>
           Tüm yönler
         </button>
         {routes.map((r, i) => (
           <button
             key={r.sakus_route_id}
             type="button"
-            className={cx(active === r.sakus_route_id ? btnPrimary : btnSecondary, "max-w-full")}
+            className={cx(active === r.sakus_route_id ? btnPrimary : btnSecondary, "shrink-0 whitespace-nowrap")}
             onClick={() => setActive(r.sakus_route_id)}
           >
             <i className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: routeColor(i, hatColor) }} />

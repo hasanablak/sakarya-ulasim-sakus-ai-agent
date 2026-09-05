@@ -45,7 +45,8 @@ export function yerSozluguPrompt(): string {
     maddeler +
     "\n“Çarşıya nasıl giderim?” Adapazarı merkeze giden hattı sorar. " +
     "Konum varsa rota_oneri(hedef=çarşı) kullan (yakın durak ∩ Çarşı hatları). " +
-    "Konum yoksa izin iste. yerden_gecen_hatlar onlarca hat döner; konum varken onu listeleme."
+    "Konum yoksa tarayıcıdan konum izni iste; yarıçap/metre yolcuya okuma. " +
+    "yerden_gecen_hatlar onlarca hat döner; konum varken onu listeleme."
   );
 }
 

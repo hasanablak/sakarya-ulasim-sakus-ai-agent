@@ -1,6 +1,6 @@
 import type { RowDataPacket } from "mysql2";
 import { exec, query } from "./db.js";
-import { getHatBySlug, hatSearchClause, listHatlar } from "./jobs.js";
+import { getHatBySlug, hatSearchClause, listHatlar, liveSlugs, startLive } from "./jobs.js";
 import { oturumKonumu } from "./chat-store.js";
 import { eslesenYer, type YerKayit } from "./yer-sozlugu.js";
 
@@ -36,7 +36,8 @@ export const FONKSIYONLAR: FonksiyonTanim[] = [
   {
     kod: "otobus_anlik_konum_sorgula",
     ad: "Otobüs anlık konum sorgula",
-    aciklama: "Bir hattın son bilinen araç konumları. Canlı takip kapalıysa stale olur.",
+    aciklama:
+      "Bir hattın otobüslerini yolcu dilinde döner (yön, sonraki durak, durakta mı). Plaka ve koordinat yok. Kayıt yoksa API kısa bekler; konum uydurma.",
     args: [{ name: "hat", type: "string", required: true, aciklama: "Hat kodu veya slug" }],
   },
   {
@@ -71,7 +72,7 @@ export const FONKSIYONLAR: FonksiyonTanim[] = [
     kod: "rota_oneri",
     ad: "Rota öner",
     aciklama:
-      "“X’e nasıl giderim?” için: yakın duraklardan geçen hatlar ∩ hedef dairesinden geçen hatlar. Çarşı = Adapazarı merkez. lat/lng uydurma.",
+      "“X’e nasıl giderim?” için: yakın duraklardan geçen hatlar ∩ hedef dairesinden geçen hatlar. Çarşı = Adapazarı merkez. lat/lng uydurma. Canlı araç varsa yolcu cümlesi ekler.",
     args: [
       { name: "hedef", type: "string", required: true, aciklama: "çarşı, adapazarı merkez, orta garaj, o. garaj" },
       { name: "lat", type: "number", required: false, aciklama: "Boş bırak; oturum konumu kullanılır" },
@@ -175,6 +176,12 @@ function staleOf(updatedAt: Date | string | null): boolean {
   return Number.isNaN(t) || Date.now() - t > STALE_MS;
 }
 
+/** ~80 m ≈ 1 dk yürüyüş; yolcuya metre okutmamak için. */
+function yurumeDk(m: number): number {
+  if (!Number.isFinite(m) || m <= 0) return 1;
+  return Math.max(1, Math.round(m / 80));
+}
+
 async function resolveHat(ref: string) {
   const raw = ref.trim();
   if (!raw) return undefined;
@@ -232,15 +239,13 @@ async function otobusGuzergahSorgula(args: Record<string, unknown>): Promise<FnR
        ORDER BY hd.sakus_route_id, hd.sira`,
       [hat.id],
     );
-    const byRoute = new Map<number, { yon: string; duraklar: { sira: number; ad: string; lat: number; lng: number }[] }>();
+    const byRoute = new Map<number, { yon: string; duraklar: { sira: number; ad: string }[] }>();
     for (const s of stops) {
       const id = Number(s.sakus_route_id);
       if (!byRoute.has(id)) byRoute.set(id, { yon: String(s.yon_ad), duraklar: [] });
       byRoute.get(id)!.duraklar.push({
         sira: Number(s.sira),
         ad: String(s.ad),
-        lat: Number(s.lat),
-        lng: Number(s.lng),
       });
     }
     return {
@@ -276,37 +281,96 @@ async function otobusGuzergahSorgula(args: Record<string, unknown>): Promise<FnR
   };
 }
 
+async function hatAraclari(hatId: number) {
+  return query<RowDataPacket[]>(
+    `SELECT bus_number, plate, lat, lng, speed, heading, status, route_name, next_stop_name, at_stop_name, updated_at
+     FROM arac_son_konum WHERE hat_id = ? ORDER BY updated_at DESC`,
+    [hatId],
+  );
+}
+
+function mapArac(v: RowDataPacket) {
+  const hiz = v.speed != null ? Number(v.speed) : null;
+  const durakta = v.at_stop_name ? String(v.at_stop_name) : null;
+  const sonraki = v.next_stop_name ? String(v.next_stop_name) : null;
+  const guzergah = v.route_name ? String(v.route_name) : null;
+  const kod = String(v.status ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+  const guzergahDisi = kod === "OFF_ROUTE" || kod === "OUT_OF_ROUTE";
+  const hareket = hiz != null && hiz < 1 ? "duruyor" : hiz != null ? "yolda" : null;
+
+  const parca: string[] = [];
+  if (guzergah) parca.push(`${guzergah} yönünde`);
+  if (durakta) parca.push(`${durakta} durağında`);
+  else if (sonraki) parca.push(`sonraki durak ${sonraki}`);
+  else if (guzergahDisi) parca.push("haritada net durak görünmüyor");
+  if (hareket === "duruyor") parca.push("şu an duruyor");
+  else if (hareket === "yolda") parca.push("hareket halinde");
+
+  return {
+    guzergah,
+    sonraki_durak: sonraki,
+    durakta,
+    hareket,
+    cumle: parca.length ? `${parca.join(", ")}.` : "Konum alındı ama durak adı yok.",
+  };
+}
+
+function tazeAracVar(vehicles: RowDataPacket[]): boolean {
+  return vehicles.some((v) => !staleOf((v.updated_at as Date | string | null) ?? null));
+}
+
+async function hatAraclariBekle(hatId: number, ms: number): Promise<RowDataPacket[]> {
+  const t0 = Date.now();
+  let vehicles = await hatAraclari(hatId);
+  while (Date.now() - t0 < ms) {
+    if (tazeAracVar(vehicles)) return vehicles;
+    await new Promise((r) => setTimeout(r, 800));
+    vehicles = await hatAraclari(hatId);
+  }
+  return vehicles;
+}
+
 async function otobusAnlikKonum(args: Record<string, unknown>): Promise<FnResult> {
   const hatRef = str(args.hat);
   if (!hatRef) return { ok: false, error: "hat gerekli" };
   const hat = await resolveHat(hatRef);
   if (!hat) return { ok: false, error: `hat bulunamadı: ${hatRef}` };
-  const vehicles = await query<RowDataPacket[]>(
-    `SELECT bus_number, plate, lat, lng, speed, heading, status, route_name, next_stop_name, at_stop_name, updated_at
-     FROM arac_son_konum WHERE hat_id = ? ORDER BY updated_at DESC`,
-    [hat.id],
-  );
+
+  let vehicles = await hatAraclari(hat.id);
+  let takip = (await liveSlugs()).includes(hat.slug);
+  let takipHata: string | null = null;
+
+  if (!tazeAracVar(vehicles)) {
+    try {
+      if (!takip) {
+        await startLive(hat.slug);
+        takip = true;
+      }
+      vehicles = await hatAraclariBekle(hat.id, 16_000);
+    } catch (e) {
+      takipHata = e instanceof Error ? e.message : String(e);
+      takip = false;
+    }
+  }
+
   const latest = vehicles[0]?.updated_at as Date | undefined;
   const stale = staleOf(latest ?? null);
+  const arac = vehicles.map(mapArac);
+  let uyari: string | null = null;
+  if (takipHata || !vehicles.length) uyari = "Şu an haritada bu hatta otobüs görünmüyor; sefer dışı olabilir.";
+  else if (stale) uyari = "Konum biraz eski olabilir.";
+
   return {
     ok: true,
     stale,
     data: {
-      hat: { kod: hat.kod, ad: hat.ad, slug: hat.slug },
-      arac: vehicles.map((v) => ({
-        no: v.bus_number,
-        plaka: v.plate,
-        lat: Number(v.lat),
-        lng: Number(v.lng),
-        hiz: v.speed != null ? Number(v.speed) : null,
-        yon: v.heading != null ? Number(v.heading) : null,
-        durum: v.status,
-        guzergah: v.route_name,
-        sonraki_durak: v.next_stop_name,
-        durakta: v.at_stop_name,
-        guncelleme: v.updated_at,
-      })),
-      uyari: vehicles.length === 0 ? "Anlık kayıt yok. Admin’den bu hat için canlı takibi aç." : stale ? "Konum 30 sn’den eski (stale)." : null,
+      hat: { kod: hat.kod, ad: hat.ad },
+      arac,
+      yolcuya: arac.length ? arac.map((a) => a.cumle).join(" ") : uyari,
+      uyari,
     },
   };
 }
@@ -480,9 +544,8 @@ async function yakinDuraklar(args: Record<string, unknown>): Promise<FnResult> {
       duraklar: duraklar.map((d) => ({
         id: Number(d.id),
         ad: String(d.ad),
-        lat: Number(d.lat),
-        lng: Number(d.lng),
         mesafe_m: Math.round(Number(d.mesafe_m)),
+        yurume_dk: yurumeDk(Number(d.mesafe_m)),
         hatlar: hatlarByDurak.get(Number(d.id)) ?? [],
       })),
     },
@@ -520,7 +583,7 @@ async function direktHatlar(opts: {
   const dlng = yer.merkez!.lng;
   const dcap = yer.yari_cap_m!;
   return query<RowDataPacket[]>(
-    `SELECT h.kod, h.slug, h.ad, h.bus_type_name,
+    `SELECT h.id, h.kod, h.slug, h.ad, h.bus_type_name,
             MIN(ST_Distance_Sphere(POINT(d.lng, d.lat), POINT(?, ?))) AS binis_m
      FROM hatlar h
      JOIN hat_duraklari hd ON hd.hat_id = h.id
@@ -560,8 +623,8 @@ async function rotaOneri(args: Record<string, unknown>): Promise<FnResult> {
       ok: true,
       data: {
         zaten_hedefte: true,
-        hedef: { soz: yer.soz, anlam: yer.anlam, mesafe_m: hedefM },
-        not: "Kullanıcı zaten bu dairenin içinde. Direkt hat önerme; yakın durakları söyle.",
+        hedef: { soz: yer.soz, anlam: yer.anlam },
+        not: "Kullanıcı zaten bu yerin yakınında. Direkt hat önerme; yakın durakları söyle. Metre/koordinat okuma.",
         yakin: yakin.ok ? yakin.data : null,
       },
     };
@@ -579,29 +642,51 @@ async function rotaOneri(args: Record<string, unknown>): Promise<FnResult> {
 
   const yakin = await yakinDuraklar({ lat, lng, yari_cap_m: kullanilan });
   const duraklar = yakinDurakListesi(yakin.data).slice(0, 8);
+  const hatIds = rows.map((h) => Number(h.id)).filter((id) => Number.isFinite(id));
+  const canliByHat = new Map<number, ReturnType<typeof mapArac>[]>();
+  if (hatIds.length) {
+    const ph = hatIds.map(() => "?").join(",");
+    const araclar = await query<RowDataPacket[]>(
+      `SELECT hat_id, bus_number, plate, lat, lng, speed, heading, status, route_name, next_stop_name, at_stop_name, updated_at
+       FROM arac_son_konum WHERE hat_id IN (${ph}) ORDER BY updated_at DESC`,
+      hatIds,
+    );
+    for (const v of araclar) {
+      const hid = Number(v.hat_id);
+      const list = canliByHat.get(hid) ?? [];
+      list.push(mapArac(v));
+      canliByHat.set(hid, list);
+    }
+  }
 
   return {
     ok: true,
     data: {
       zaten_hedefte: false,
-      hedef: { soz: yer.soz, anlam: yer.anlam, yari_cap_m: yer.yari_cap_m, mesafe_m: hedefM },
-      yari_cap_m: kullanilan,
+      hedef: { soz: yer.soz, anlam: yer.anlam },
       direkt_adet: rows.length,
       direkt: rows.map((h) => {
         const kod = String(h.kod);
+        const hid = Number(h.id);
+        const arac = canliByHat.get(hid) ?? [];
+        const binis = binisDuragi(kod, duraklar);
         return {
           kod,
-          slug: String(h.slug),
           ad: String(h.ad),
-          tur: h.bus_type_name,
-          binis_m: Math.round(Number(h.binis_m)),
-          binis: binisDuragi(kod, duraklar),
+          binis: binis
+            ? { ad: binis.ad, yurume_dk: yurumeDk(binis.mesafe_m) }
+            : null,
+          arac,
         };
       }),
-      yakin_duraklar: duraklar,
+      yakin_duraklar: duraklar.map((d) => ({
+        ad: d.ad,
+        yurume_dk: yurumeDk(d.mesafe_m),
+        hatlar: d.hatlar.map((h) => h.kod),
+      })),
       not: rows.length
-        ? "Bu hatlar hem yürüme dairesindeki duraktan hem hedeften geçer. Yolcuya 3–5 öner; binis durağını söyle."
-        : "Yakın duraklardan hedefe direkt hat yok. 1 aktarma henüz yok; uydurma. Yakın durakları söyle.",
+        ? "Yolcuya günlük dille 3–4 hat söyle: hangi hatta, hangi duraktan, yaklaşık kaç dk yürüme. cumle varsa onu kullan. Plaka, koordinat, araç no okuma. Canlı araç yoksa 1–2 hat için otobus_anlik_konum_sorgula çağır; tool adını yolcuya söyleme."
+        : "Yakın duraktan hedefe direkt hat yok. Aktarma uydurma. Yakın durakları söyle.",
     },
   };
 }

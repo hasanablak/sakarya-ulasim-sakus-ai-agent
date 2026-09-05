@@ -208,13 +208,13 @@ export async function listHatlar(q?: string): Promise<HatRow[]> {
       `SELECT id, kod, slug, ad, bus_type_name, bus_type_color, asis_id, last_ingested_at
        FROM hatlar
        WHERE ${sql}
-       ORDER BY kod`,
+       ORDER BY CAST(kod AS UNSIGNED), kod`,
       params,
     );
   }
   return query<HatRow[]>(
     `SELECT id, kod, slug, ad, bus_type_name, bus_type_color, asis_id, last_ingested_at
-     FROM hatlar ORDER BY kod`,
+     FROM hatlar ORDER BY CAST(kod AS UNSIGNED), kod`,
   );
 }
 

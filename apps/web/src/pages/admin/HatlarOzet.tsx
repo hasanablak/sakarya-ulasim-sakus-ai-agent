@@ -44,7 +44,7 @@ export function HatlarOzet({ ozet }: { ozet: HatOzetData }) {
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <article className={cardCls}>
+      <Link to="/admin/hatlar" className={`${cardCls} block no-underline transition-shadow hover:shadow-md`}>
         <div className="flex items-start justify-between gap-3">
           <p className="text-sm text-zinc-500">Hat ağı</p>
           <span className={ozet.hat > 0 ? trendUp : trendWarn}>{ozet.durak} durak</span>
@@ -54,7 +54,7 @@ export function HatlarOzet({ ozet }: { ozet: HatOzetData }) {
         <div className="mt-3 flex flex-col gap-1 text-sm text-zinc-500">
           <span>{ozet.guzergah} güzergah</span>
         </div>
-      </article>
+      </Link>
 
       <article className={cardCls}>
         <div className="flex items-start justify-between gap-3">
@@ -67,19 +67,24 @@ export function HatlarOzet({ ozet }: { ozet: HatOzetData }) {
           {ozet.turler.length === 0 && <li className={muted}>Henüz hat yok</li>}
           {ozet.turler.map((t) => (
             <li key={t.ad}>
-              <div className="flex justify-between gap-2 text-xs">
-                <span className="text-zinc-900 dark:text-zinc-50">{t.ad}</span>
-                <em className="not-italic text-zinc-500">{t.n}</em>
-              </div>
-              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                <i
-                  className="block h-full rounded-full"
-                  style={{
-                    width: `${Math.max(6, (t.n / turMax) * 100)}%`,
-                    background: t.renk || "#4f46e5",
-                  }}
-                />
-              </div>
+              <Link
+                to={`/admin/hatlar?tur=${encodeURIComponent(t.ad)}`}
+                className="block no-underline"
+              >
+                <div className="flex justify-between gap-2 text-xs">
+                  <span className="text-zinc-900 dark:text-zinc-50">{t.ad}</span>
+                  <em className="not-italic text-zinc-500">{t.n}</em>
+                </div>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                  <i
+                    className="block h-full rounded-full"
+                    style={{
+                      width: `${Math.max(6, (t.n / turMax) * 100)}%`,
+                      background: t.renk || "#4f46e5",
+                    }}
+                  />
+                </div>
+              </Link>
             </li>
           ))}
         </ul>

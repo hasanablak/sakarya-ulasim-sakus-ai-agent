@@ -11,7 +11,8 @@ Veri [SAKUS / public API](https://ulasim.sakarya.bel.tr/kullanim-sartlari) kayna
 | Adres | Ne işe yarar |
 |---|---|
 | `/` | Tanıtım + sağ alt sohbet widget |
-| `/admin` | Hatlar, canlı takip, ingest |
+| `/admin` | Özet, ingest |
+| `/admin/hatlar` | Hat listesi, tür filtresi |
 | `/admin/sohbetler` | Gelen kutusu |
 | `/admin/agentler` · `/toollar` · `/webchatler` | Asistan, tool, pencere tasarımı ve embed |
 

@@ -1,10 +1,7 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
-import { HatlarOzet, type HatOzetData } from "./HatlarOzet";
-import { IngestBanner } from "./IngestBanner";
 import {
-  btnPrimary,
   btnSecondary,
   cx,
   errText,
@@ -28,118 +25,163 @@ type Hat = {
   slug: string;
   ad: string;
   bus_type_name: string | null;
+  bus_type_color: string | null;
   last_ingested_at: string | null;
 };
 
-type Job = {
-  id: number;
-  status: string;
-  error_text: string | null;
-  progress_json: { line?: string } | string | null;
-  started_at: string | null;
-  finished_at: string | null;
-};
+function hatTuru(h: Hat) {
+  return h.bus_type_name?.trim() || "Diğer";
+}
+
+function kodSirasi(a: string, b: string) {
+  return a.localeCompare(b, "tr", { numeric: true, sensitivity: "base" });
+}
 
 export function HatlarPage() {
+  const [params, setParams] = useSearchParams();
   const [hatlar, setHatlar] = useState<Hat[]>([]);
   const [q, setQ] = useState("");
-  const [live, setLive] = useState<string[]>([]);
-  const [ingestRunning, setIngestRunning] = useState(false);
-  const [scraperUp, setScraperUp] = useState(true);
-  const [lastJob, setLastJob] = useState<Job | null>(null);
-  const [ozet, setOzet] = useState<HatOzetData | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
-
-  async function load() {
-    const data = await api.adminHatlar(q || undefined);
-    setHatlar(data.hatlar ?? []);
-    setLive(data.live ?? []);
-    setIngestRunning(Boolean(data.ingestRunning));
-    setScraperUp(data.scraperUp !== false);
-    setLastJob(data.lastJob ?? null);
-    setOzet(data.ozet ?? null);
-  }
+  const [err, setErr] = useState<string | null>(null);
+  const tur = params.get("tur");
 
   useEffect(() => {
-    load().catch((e) => setMsg(String(e.message)));
+    api
+      .adminHatlar()
+      .then((d) => setHatlar(d.hatlar ?? []))
+      .catch((e) => setErr(String((e as Error).message)));
   }, []);
 
-  useEffect(() => {
-    if (!ingestRunning && lastJob?.status !== "running") return;
-    const t = setInterval(() => {
-      load().catch(() => undefined);
-    }, 2000);
-    return () => clearInterval(t);
-  }, [ingestRunning, lastJob?.status]);
+  const turler = useMemo(() => {
+    const map = new Map<string, { n: number; renk: string | null }>();
+    for (const h of hatlar) {
+      const ad = hatTuru(h);
+      const cur = map.get(ad) ?? { n: 0, renk: h.bus_type_color };
+      cur.n += 1;
+      if (!cur.renk && h.bus_type_color) cur.renk = h.bus_type_color;
+      map.set(ad, cur);
+    }
+    return [...map.entries()].sort((a, b) => b[1].n - a[1].n || a[0].localeCompare(b[0], "tr"));
+  }, [hatlar]);
+
+  const gosterilen = useMemo(() => {
+    const needle = q.trim().toLocaleLowerCase("tr");
+    return hatlar
+      .filter((h) => {
+        if (tur && hatTuru(h) !== tur) return false;
+        if (!needle) return true;
+        return [h.kod, h.ad, h.slug, hatTuru(h)].join(" ").toLocaleLowerCase("tr").includes(needle);
+      })
+      .sort((a, b) => kodSirasi(a.kod, b.kod));
+  }, [hatlar, q, tur]);
+
+  function secTur(ad: string | null) {
+    const next = new URLSearchParams(params);
+    if (!ad || ad === tur) next.delete("tur");
+    else next.set("tur", ad);
+    setParams(next, { replace: true });
+  }
 
   return (
     <div className={pageStack}>
       <header className={pageHead}>
         <div>
-          <h1 className={pageTitle}>Otobüs hatları</h1>
+          <h1 className={pageTitle}>Hatlar</h1>
           <p className={pageSub}>
-            {hatlar.length} hat kayıtlı. Canlı: {live.length ? live.join(", ") : "yok"}
+            {gosterilen.length}
+            {gosterilen.length !== hatlar.length ? ` / ${hatlar.length}` : ""} hat
+            {tur ? ` · ${tur}` : ""}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className={btnPrimary}
-            disabled={ingestRunning || !scraperUp}
-            onClick={async () => {
-              setMsg(null);
-              try {
-                const r = await api.ingest({});
-                setMsg(`İş #${r.jobId} kuyruğa alındı. Puppeteer SAKUS’tan çekiyor.`);
-                setIngestRunning(true);
-              } catch (e) {
-                setMsg(String((e as Error).message));
-              }
-            }}
-          >
-            Tüm hatları SAKUS’tan çek
-          </button>
-        </div>
       </header>
-      {lastJob && <IngestBanner job={lastJob} />}
-      {ozet && <HatlarOzet ozet={ozet} />}
-      {msg && lastJob?.status !== "running" && (
-        <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-500">{msg}</p>
-      )}
-      {!scraperUp && (
-        <p className={errText}>Puppeteer konteyneri kapalı. `docker compose up -d --build scraper` çalıştır.</p>
-      )}
-      <form
-        className="flex items-center gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          load().catch((err) => setMsg(String(err.message)));
-        }}
-      >
-        <input className={inputCls} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Kod, ad, slug ara" />
-        <button type="submit" className={btnSecondary}>
-          Ara
+      {err && <p className={errText}>{err}</p>}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          className={cx(
+            "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+            !tur
+              ? "border-indigo-600 bg-indigo-600 text-white"
+              : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300",
+          )}
+          onClick={() => secTur(null)}
+        >
+          Tümü
+          <span className="ml-1.5 opacity-80">{hatlar.length}</span>
         </button>
+        {turler.map(([ad, info]) => {
+          const on = tur === ad;
+          return (
+            <button
+              key={ad}
+              type="button"
+              className={cx(
+                "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                on ? "text-white" : "bg-white text-zinc-700 hover:border-zinc-300 dark:bg-zinc-900 dark:text-zinc-200",
+              )}
+              style={
+                on
+                  ? { background: info.renk || "#4f46e5", borderColor: info.renk || "#4f46e5" }
+                  : { borderColor: info.renk || undefined }
+              }
+              onClick={() => secTur(ad)}
+            >
+              {ad}
+              <span className="ml-1.5 opacity-80">{info.n}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <form
+        className="flex max-w-xl items-center gap-2"
+        onSubmit={(e) => e.preventDefault()}
+      >
+        <input
+          className={inputCls}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Kod, ad veya slug ara"
+        />
+        {q && (
+          <button type="button" className={btnSecondary} onClick={() => setQ("")}>
+            Temizle
+          </button>
+        )}
       </form>
+
       <div className={tableWrap}>
         <table className={tableCls}>
           <thead>
             <tr>
               <th className={thCls}>Kod</th>
               <th className={thCls}>Ad</th>
+              <th className={thCls}>Tür</th>
               <th className={thCls}>Son çekim</th>
               <th className={thCls}></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-            {hatlar.map((h) => (
+            {gosterilen.length === 0 && (
+              <tr>
+                <td colSpan={5} className={cx(tdCls, muted)}>
+                  Eşleşen hat yok.
+                </td>
+              </tr>
+            )}
+            {gosterilen.map((h) => (
               <tr key={h.id} className={trCls}>
                 <td className={tdCls}>
                   <strong>{h.kod}</strong>
                 </td>
+                <td className={tdCls}>{h.ad}</td>
                 <td className={tdCls}>
-                  {h.ad}
-                  <div className={cx(muted, "text-xs")}>{h.bus_type_name}</div>
+                  <span
+                    className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium text-white"
+                    style={{ background: h.bus_type_color || "#4f46e5" }}
+                  >
+                    {hatTuru(h)}
+                  </span>
                 </td>
                 <td className={cx(tdCls, muted)}>
                   {h.last_ingested_at ? new Date(h.last_ingested_at).toLocaleString("tr-TR") : "—"}

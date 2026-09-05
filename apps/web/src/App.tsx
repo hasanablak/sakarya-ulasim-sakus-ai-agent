@@ -7,6 +7,7 @@ import { EmbedPage } from "./pages/Embed";
 import { AdminLayout } from "./pages/admin/AdminLayout";
 import { AgentFormPage } from "./pages/admin/AgentForm";
 import { AgentlerPage } from "./pages/admin/Agentler";
+import { DashboardPage } from "./pages/admin/Dashboard";
 import { HatDetayPage } from "./pages/admin/HatDetay";
 import { HatlarPage } from "./pages/admin/Hatlar";
 import { LoginPage } from "./pages/admin/Login";
@@ -38,7 +39,8 @@ export function App() {
             </RequireAdmin>
           }
         >
-          <Route index element={<HatlarPage />} />
+          <Route index element={<DashboardPage />} />
+          <Route path="hatlar" element={<HatlarPage />} />
           <Route path="hatlar/:slug" element={<HatDetayPage />} />
           <Route path="sohbetler" element={<SohbetlerPage />} />
           <Route path="sohbetler/:id" element={<SohbetlerPage />} />

@@ -94,7 +94,7 @@ export function HatDetayPage() {
   return (
     <div className={pageStack}>
       <p>
-        <Link className={linkCls} to="/admin">
+        <Link className={linkCls} to="/admin/hatlar">
           ← Hatlar
         </Link>
       </p>

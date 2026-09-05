@@ -7,7 +7,7 @@ Bu dosya proje beynidir. Cursor kuralları `.cursor/rules/`, Claude kuralları `
 ## Ürün yüzeyleri
 
 - **Public site (`/`):** sistemi tanıtan sayfa; sağ altta sohbet widget.
-- **Admin:** hatlar (DB), hat özelinde SAKUS güncelleme, anlık otobüs, geçmiş konuşmalar, **AI Agent ve Tool’lar** (agent tanımı + tool→fonksiyon), **Webchat’ler** (agent seçimi + pencere tasarımı + embed script).
+- **Admin:** özet panosu (`/admin`), hatlar (`/admin/hatlar`), hat özelinde SAKUS güncelleme, anlık otobüs, geçmiş konuşmalar, **AI Agent ve Tool’lar** (agent tanımı + tool→fonksiyon), **Webchat’ler** (agent seçimi + pencere tasarımı + embed script).
 - **İki Puppeteer süreci (karıştırma):**
   1. **Ingest** — hat listesi + güzergah/durak + sefer saatleri. Admin “tümünü çek” veya “bu hattı güncelle” ile tekrar çalışır. Sonuç DB.
   2. **Live** — bir hat için anlık araç. SAKUS AJAX/SSE yakalanır, iç sokete basılır; API DB + dış soket.

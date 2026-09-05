@@ -13,7 +13,8 @@ import {
 } from "./ui";
 
 const NAV = [
-  { to: "/admin", label: "Hatlar", end: true, icon: IconHat },
+  { to: "/admin", label: "Özet", end: true, icon: IconOzet },
+  { to: "/admin/hatlar", label: "Hatlar", icon: IconHat },
   { to: "/admin/sohbetler", label: "Gelen kutusu", icon: IconInbox },
 ];
 
@@ -24,7 +25,8 @@ const NAV_AI = [
 ];
 
 function headerTitle(pathname: string): string {
-  if (pathname === "/admin") return "Hatlar";
+  if (pathname === "/admin") return "Özet";
+  if (pathname === "/admin/hatlar") return "Hatlar";
   if (pathname.startsWith("/admin/hatlar/")) return "Hat detayı";
   if (pathname.startsWith("/admin/sohbetler/")) return "Sohbet";
   if (pathname === "/admin/sohbetler") return "Gelen kutusu";
@@ -92,7 +94,11 @@ export function AdminLayout() {
                 end={item.end}
                 className={({ isActive }) =>
                   navItem(
-                    item.to === "/admin/sohbetler" ? pathname.startsWith("/admin/sohbetler") : isActive,
+                    item.to === "/admin/sohbetler"
+                      ? pathname.startsWith("/admin/sohbetler")
+                      : item.to === "/admin/hatlar"
+                        ? pathname.startsWith("/admin/hatlar")
+                        : isActive,
                     collapsed,
                   )
                 }
@@ -155,6 +161,17 @@ export function AdminLayout() {
         </div>
       </div>
     </div>
+  );
+}
+
+function IconOzet() {
+  return (
+    <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+      <rect x="4" y="4" width="7" height="7" rx="1.5" />
+      <rect x="13" y="4" width="7" height="7" rx="1.5" />
+      <rect x="4" y="13" width="7" height="7" rx="1.5" />
+      <rect x="13" y="13" width="7" height="7" rx="1.5" />
+    </svg>
   );
 }
 

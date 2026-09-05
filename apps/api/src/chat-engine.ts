@@ -24,15 +24,52 @@ import type { RowDataPacket } from "mysql2";
 const MAX_MSG = 4000;
 const MAX_TOOL_ROUNDS = 5;
 const TOOL_JSON_CAP = 6000;
+const TEKNIK_ALAN = new Set([
+  "lat",
+  "lng",
+  "plaka",
+  "plate",
+  "slug",
+  "takip",
+  "stale",
+  "no",
+  "bus_number",
+  "heading",
+  "yon_derece",
+  "mesafe_m",
+  "yari_cap_m",
+  "binis_m",
+]);
+
+function stripTeknik(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(stripTeknik);
+  if (!v || typeof v !== "object") return v;
+  const out: Record<string, unknown> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (TEKNIK_ALAN.has(k)) continue;
+    if (typeof val === "string" && /^(OFF_ROUTE|ON_ROUTE|IN_ROUTE|OUT_OF_ROUTE)$/i.test(val)) continue;
+    out[k] = stripTeknik(val);
+  }
+  return out;
+}
+
+function toolJsonForLlm(result: unknown): string {
+  return JSON.stringify(stripTeknik(result)).slice(0, TOOL_JSON_CAP);
+}
 
 const TABAN_SISTEM =
-  "Sen Sakarya Büyükşehir Belediyesi toplu taşıma asistanısın. Yanıtların Türkçe, kısa ve yolcuya yönelik olsun. " +
-  "Tool sonuçlarındaki ham JSON’u olduğu gibi yapıştırma; özetle. Bilmediğin hat, saat veya konumu uydurma. " +
-  "Koordinat uydurma. Yakın durak için yakin_duraklar; “X’e nasıl giderim?” için rota_oneri(hedef=X) kullan. " +
-  "rota_oneri yakın durak hatları ile hedefi kesiştirir — yerden_gecen_hatlar listesini konum varken okuma. " +
-  "SAKUS haritası veya belediye sitesine yönlendirebilirsin. " +
-  "“En yakın sefer” listedeki ilk sabah saati değil, Türkiye saatine göre şu andan SONRAKİ kalkıştır. " +
-  "otobus_saat_sorgula çıktısındaki sonraki / yaklasan / simdi alanlarını kullan; bugün bittiyse yarını söyle.\n" +
+  "Sen duraktaki bir yolcuya yardımcı olan Sakarya otobüs asistanısın. Kısa, sade Türkçe konuş; durak görevlisi gibi. " +
+  "Yolcuya ASLA şunları yazma: koordinat, plaka, araç no, slug, OFF_ROUTE, stale, JSON alan adı, tool adı, “canlı takip”, “admin”, metre kodu (binis_m, yari_cap_m). " +
+  "Yürümeyi “yaklaşık X dakika” diye söyle. cumle / yolcuya alanını kullan, ham JSON yapıştırma. " +
+  "Örnek: “27’ye Mühendislik Fakültesi durağından bin (yaklaşık 2 dk yürüme). Çarşı yönüne gidiyor.” " +
+  "Anlık konumda sonraki durak ve yön yeter; durak yoksa “şu an net durak görünmüyor” de. " +
+  "Haritada araç yoksa “şu an bu hatta araç görünmüyor” + sonraki sefer saati; “takibi aç / belediyeye başvur” deme. " +
+  "Bilmediğin hat, saat veya konumu uydurma. Koordinat uydurma. " +
+  "Yakın durak için yakin_duraklar; “X’e nasıl giderim?” için rota_oneri(hedef=X). " +
+  "rota_oneri yakın durak hatları ∩ hedef — konum varken yerden_gecen_hatlar listesini okuma. " +
+  "Önerilen 1–2 hat için otobus_anlik_konum_sorgula; sonraki durak uydurma. " +
+  "“En yakın sefer” listedeki ilk sabah saati değil, Türkiye saatine göre şu andan SONRAKİ kalkış. " +
+  "otobus_saat_sorgula içindeki sonraki / yaklasan / simdi alanlarını kullan; bugün bittiyse yarını söyle.\n" +
   yerSozluguPrompt();
 
 function konumPrompt(origin?: { lat: number; lng: number }, konumDurum?: string): string {
@@ -107,11 +144,10 @@ export async function handleChatTurn(input: {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[chat] llm hata:", msg);
-    const kisa = msg.replace(/\s+/g, " ").trim().slice(0, 180);
     await insertMesaj(
       sessionId,
       "assistant",
-      kisa ? `Asistan yanıt veremedi: ${kisa}` : "Şu an asistan yanıt veremedi. Biraz sonra tekrar dene.",
+      "Şu an yanıt veremedim. Biraz sonra aynı soruyu tekrar dene.",
       {
         kind: "assistant",
         ok: false,
@@ -206,7 +242,7 @@ async function produceReply(opts: {
       for (const tc of completion.tool_calls) {
         const fnKod = toolMap.get(tc.name);
         const result = await runTool(sessionId, tc, fnKod);
-        const content = JSON.stringify(result).slice(0, TOOL_JSON_CAP);
+        const content = toolJsonForLlm(result);
         messages.push({ role: "tool", tool_call_id: tc.id, name: tc.name, content });
         await insertMesaj(sessionId, "tool", content, {
           kind: "tool_result",
@@ -354,22 +390,23 @@ async function draftChatReply(text: string): Promise<{ replyText: string; meta: 
 
   if (match) {
     const vehicles = await query<RowDataPacket[]>(
-      `SELECT bus_number, plate, lat, lng, speed, status, next_stop_name, route_name, updated_at
+      `SELECT next_stop_name, at_stop_name, route_name, updated_at
        FROM arac_son_konum WHERE hat_id = ? ORDER BY updated_at DESC`,
       [match.id],
     );
     if (!vehicles.length) {
       return {
-        replyText: `${match.kod} ${match.ad} hattını veritabanında görüyorum ama anlık otobüs henüz yok. Admin panelinden bu hat için canlı takibi açabilirsin.`,
+        replyText: `${match.kod} ${match.ad} hattını biliyorum ama şu an haritada otobüs görünmüyor. Biraz sonra tekrar sorabilirsin.`,
         meta: { hatId: match.id, vehicles: 0 },
       };
     }
     const lines = vehicles.slice(0, 6).map((v) => {
-      const where = v.next_stop_name ? `sonraki durak ${v.next_stop_name}` : v.status;
-      return `• Araç ${v.bus_number}${v.plate ? ` (${v.plate})` : ""} — ${where ?? ""}`;
+      if (v.next_stop_name) return `• ${v.route_name ? `${v.route_name} yönünde, ` : ""}sonraki durak ${v.next_stop_name}`;
+      if (v.at_stop_name) return `• ${v.at_stop_name} durağında`;
+      return `• Konum alındı ama net durak adı yok`;
     });
     return {
-      replyText: `${match.kod} ${match.ad} üzerinde ${vehicles.length} araç kaydı var:\n${lines.join("\n")}`,
+      replyText: `${match.kod} ${match.ad} hattında şu an ${vehicles.length} otobüs görünüyor:\n${lines.join("\n")}`,
       meta: { hatId: match.id, vehicles: vehicles.length },
     };
   }
@@ -377,9 +414,9 @@ async function draftChatReply(text: string): Promise<{ replyText: string; meta: 
   const ornek = hatlar.slice(0, 5).map((h) => h.kod).join(", ");
   return {
     replyText:
-      `Merhaba, SAKUS asistanıyım. Sakarya otobüs hatlarını sorabilir, durak ve sefer saati öğrenebilirsin.\n\n` +
-      `Yönetim panelinde webchat’e bir agent ve API anahtarı bağlarsan yanıtlar yapay zekâ üzerinden gelir. ` +
-      `Şimdilik bir hat kodu yazabilirsin (ör. ${ornek || "A1"}).`,
+      `Merhaba, SAKUS asistanıyım. Hat kodu, durak adı veya “çarşıya nasıl giderim” yazabilirsin` +
+      (ornek ? ` (ör. ${ornek})` : "") +
+      ".",
     meta: { hatCount: hatlar.length },
   };
 }

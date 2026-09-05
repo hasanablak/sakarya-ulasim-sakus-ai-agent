@@ -68,6 +68,10 @@ export function baslatKonumIstegi(): Promise<KonumSonuc> {
   return inflight;
 }
 
+export function konumKayitli(): boolean {
+  return cacheOku() != null;
+}
+
 export function konumHint(neden: KonumNeden): string {
   if (neden === "reddedildi") {
     return "Konum izni kapalı. Adres çubuğundaki kilitten konum iznini aç, sonra aynı soruyu tekrar yaz.";

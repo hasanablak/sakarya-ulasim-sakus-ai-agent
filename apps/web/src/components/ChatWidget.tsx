@@ -1,9 +1,10 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { DEFAULT_WEBCHAT_TEMA, type WebchatPublic } from "@sakus/shared";
 import { api, getSessionId, setSessionId, type ChatMessage } from "../api";
-import { baslatKonumIstegi, konumHint } from "../konum";
+import { baslatKonumIstegi, konumKayitli } from "../konum";
 import { ChatMd } from "./ChatMd";
 import { ChatShell } from "./ChatShell";
+import { KonumKart, type KonumKartDurum } from "./KonumKart";
 
 export const ORNEK_CUMLELER = [
   "Şu an bana en yakın hatlar neler?",
@@ -43,7 +44,7 @@ export function ChatWidget({ slug, embed, host }: { slug?: string; embed?: boole
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [konumBekliyor, setKonumBekliyor] = useState(false);
-  const [konumUyari, setKonumUyari] = useState<string | null>(null);
+  const [konumDurum, setKonumDurum] = useState<KonumKartDurum>(konumKayitli() ? "var" : "yok");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -69,7 +70,7 @@ export function ChatWidget({ slug, embed, host }: { slug?: string; embed?: boole
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
-  }, [messages, open]);
+  }, [messages, open, konumDurum]);
 
   useEffect(() => {
     if (!embed || !cfg) return;
@@ -113,8 +114,7 @@ export function ChatWidget({ slug, embed, host }: { slug?: string; embed?: boole
     try {
       const konum = await baslatKonumIstegi();
       setKonumBekliyor(false);
-      if (konum.ok) setKonumUyari(null);
-      else setKonumUyari(konumHint(konum.neden));
+      setKonumDurum(konum.ok ? "var" : konum.neden);
       const data = await api.chatSend({
         sessionId: getSessionId(cfg.embed_key || cfg.slug, host) ?? undefined,
         message,
@@ -154,11 +154,45 @@ export function ChatWidget({ slug, embed, host }: { slug?: string; embed?: boole
   }
 
   function toggleOpen() {
-    setOpen((v) => {
-      if (!v) void baslatKonumIstegi();
-      return !v;
-    });
+    setOpen((v) => !v);
   }
+
+  async function konumIste() {
+    setKonumDurum("bekliyor");
+    const r = await baslatKonumIstegi();
+    setKonumDurum(r.ok ? "var" : r.neden);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    if (konumKayitli()) {
+      setKonumDurum("var");
+      return;
+    }
+    let iptal = false;
+    const izin = navigator.permissions?.query?.({ name: "geolocation" });
+    if (!izin) {
+      setKonumDurum("yok");
+      return;
+    }
+    void izin
+      .then((st) => {
+        if (iptal) return;
+        if (st.state === "granted") {
+          setKonumDurum("bekliyor");
+          return baslatKonumIstegi().then((r) => {
+            if (!iptal) setKonumDurum(r.ok ? "var" : r.neden);
+          });
+        }
+        setKonumDurum(st.state === "denied" ? "reddedildi" : "yok");
+      })
+      .catch(() => {
+        if (!iptal) setKonumDurum("yok");
+      });
+    return () => {
+      iptal = true;
+    };
+  }, [open]);
 
   if (!cfg) return null;
 
@@ -184,7 +218,6 @@ export function ChatWidget({ slug, embed, host }: { slug?: string; embed?: boole
               </button>
             ))}
           </div>
-          {konumUyari && <p className="hint chat-konum-hint">{konumUyari}</p>}
           <form onSubmit={send}>
             <input
               value={text}
@@ -200,6 +233,7 @@ export function ChatWidget({ slug, embed, host }: { slug?: string; embed?: boole
       }
     >
       {visibleChat(messages).length === 0 && !busy && <p className="hint">{cfg.karsilama}</p>}
+      <KonumKart durum={konumDurum} busy={busy} onIste={() => void konumIste()} />
       {visibleChat(messages).map((m) => (
         <div key={m.id} className={`bubble ${m.rol}`}>
           <ChatMd text={m.icerik} />
